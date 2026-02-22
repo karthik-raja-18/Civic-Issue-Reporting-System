@@ -1,0 +1,92 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-ink-950 text-ink-100 font-sans antialiased;
+    min-height: 100vh;
+  }
+
+  h1, h2, h3, h4 {
+    @apply font-display;
+  }
+}
+
+@layer components {
+  /* ── Buttons ─────────────────────────────────────────── */
+  .btn {
+    @apply inline-flex items-center gap-2 px-4 py-2.5 rounded-lg font-sans font-medium text-sm
+           transition-all duration-200 cursor-pointer select-none focus:outline-none
+           focus:ring-2 focus:ring-offset-2 focus:ring-offset-ink-950 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-civic-500 hover:bg-civic-400 text-white focus:ring-civic-500 active:bg-civic-600;
+  }
+  .btn-secondary {
+    @apply btn bg-ink-800 hover:bg-ink-700 text-ink-100 border border-ink-700 hover:border-ink-600 focus:ring-ink-500;
+  }
+  .btn-danger {
+    @apply btn bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-600/30 hover:border-red-500 focus:ring-red-500;
+  }
+  .btn-ghost {
+    @apply btn text-ink-300 hover:text-ink-100 hover:bg-ink-800;
+  }
+
+  /* ── Inputs ──────────────────────────────────────────── */
+  .input {
+    @apply w-full px-4 py-2.5 rounded-lg bg-ink-900 border border-ink-700
+           text-ink-100 placeholder-ink-500 font-sans text-sm
+           focus:outline-none focus:ring-2 focus:ring-civic-500 focus:border-civic-500
+           transition-colors duration-200;
+  }
+  .input-error {
+    @apply border-red-500 focus:ring-red-500;
+  }
+  .label {
+    @apply block text-xs font-medium text-ink-400 mb-1.5 uppercase tracking-wider;
+  }
+
+  /* ── Cards ───────────────────────────────────────────── */
+  .card {
+    @apply bg-ink-900 border border-ink-800 rounded-xl p-5 transition-all duration-200;
+  }
+  .card-hover {
+    @apply card hover:border-ink-600 hover:bg-ink-800/60 cursor-pointer;
+  }
+
+  /* ── Badges ──────────────────────────────────────────── */
+  .badge {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono font-medium tracking-wide uppercase;
+  }
+  .badge-pending   { @apply badge bg-amber-500/15 text-amber-400 border border-amber-500/25; }
+  .badge-progress  { @apply badge bg-blue-500/15 text-blue-400 border border-blue-500/25; }
+  .badge-resolved  { @apply badge bg-civic-500/15 text-civic-400 border border-civic-500/25; }
+  .badge-admin     { @apply badge bg-purple-500/15 text-purple-400 border border-purple-500/25; }
+  .badge-user      { @apply badge bg-ink-600/40 text-ink-300 border border-ink-600/50; }
+
+  /* ── Page shell ──────────────────────────────────────── */
+  .page-wrapper {
+    @apply animate-slide-up;
+  }
+  .page-title {
+    @apply text-2xl font-display font-bold text-white;
+  }
+  .section-title {
+    @apply text-lg font-display font-semibold text-white;
+  }
+}
+
+/* Thin scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: #1c2330; }
+::-webkit-scrollbar-thumb { background: #364455; border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: #4b6278; }
