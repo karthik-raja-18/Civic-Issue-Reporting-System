@@ -57,25 +57,24 @@ export default function CreateIssue() {
   }
 
   // ── Upload evidence to Cloudinary ────────────────────────────────
-  const handleUpload = async () => {
-    if (!evidence?.file) return
-    setUploading(true)
-    setError(null)
-    try {
-      const fd = new FormData()
-      fd.append('file',       evidence.file)
-      fd.append('capturedAt', evidence.timestamp)
-      if (location?.latitude)  fd.append('latitude',  location.latitude)
-      if (location?.longitude) fd.append('longitude', location.longitude)
-
-      const res = await issueApi.uploadImage(fd)
-      setImageUrl(res.data.data.imageUrl)
-    } catch (err) {
-      setError('Upload failed: ' + extractError(err))
-    } finally {
-      setUploading(false)
-    }
+const handleUpload = async () => {
+  if (!evidence?.file) return
+  setUploading(true)
+  setError(null)
+  try {
+    // ✅ Fix 3 — Direct to Cloudinary, no backend, no timeout
+    const url = await issueApi.uploadImageDirect(
+      evidence.file,
+      location?.latitude,
+      location?.longitude
+    )
+    setImageUrl(url)
+  } catch (err) {
+    setError('Upload failed: ' + (err.message || 'Check internet connection and try again.'))
+  } finally {
+    setUploading(false)
   }
+}
 
   // ── Submit issue ──────────────────────────────────────────────────
   const handleSubmit = async (e) => {

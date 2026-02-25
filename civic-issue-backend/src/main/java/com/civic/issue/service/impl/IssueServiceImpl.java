@@ -12,6 +12,7 @@ import com.civic.issue.entity.User;
 import com.civic.issue.enums.RoleType;
 import com.civic.issue.enums.Zone;
 import com.civic.issue.exception.ResourceNotFoundException;
+import com.civic.issue.exception.UnauthorizedException;
 import com.civic.issue.repository.CommentRepository;
 import com.civic.issue.repository.IssueRepository;
 import com.civic.issue.repository.NotificationRepository;
@@ -36,18 +37,16 @@ public class IssueServiceImpl implements IssueService {
     private final UserRepository         userRepository;
     private final CommentRepository      commentRepository;
     private final NotificationRepository notificationRepository;
-    private final ZoneDetector           zoneDetector;   // ✅ NEW
+    private final ZoneDetector           zoneDetector;
 
     @Override
     @Transactional
     public IssueResponse createIssue(IssueRequest request, String userEmail) {
         User user = findUserByEmail(userEmail);
 
-        // ✅ NEW — Detect Coimbatore zone from coordinates
         Zone detectedZone = zoneDetector.detectZone(
                 request.getLatitude(), request.getLongitude());
 
-        // ✅ NEW — Find regional admin for this zone
         Optional<User> regionalAdmin = userRepository
                 .findByRoleAndZone(RoleType.REGIONAL_ADMIN, detectedZone);
 
@@ -59,13 +58,12 @@ public class IssueServiceImpl implements IssueService {
                 .latitude(request.getLatitude())
                 .longitude(request.getLongitude())
                 .createdBy(user)
-                .zone(detectedZone)                                    // ✅ NEW
-                .assignedTo(regionalAdmin.orElse(null))                // ✅ NEW
+                .zone(detectedZone)
+                .assignedTo(regionalAdmin.orElse(null))
                 .build();
 
         Issue saved = issueRepository.save(issue);
 
-        // ✅ NEW — Log zone assignment result
         if (regionalAdmin.isPresent()) {
             log.info("Issue #{} → Zone: {} → Assigned to: {}",
                     saved.getId(), detectedZone, regionalAdmin.get().getEmail());
@@ -102,11 +100,44 @@ public class IssueServiceImpl implements IssueService {
         return mapToResponse(findIssueById(id));
     }
 
+    // ✅ UPDATED — now takes userEmail, enforces zone restriction
     @Override
     @Transactional
-    public IssueResponse updateIssueStatus(Long id, UpdateStatusRequest request) {
+    public IssueResponse updateIssueStatus(Long id, UpdateStatusRequest request, String userEmail) {
         Issue issue = findIssueById(id);
-        issue.setStatus(request.getStatus());
+
+        User currentUser = findUserByEmail(userEmail);
+
+        if (currentUser.getRole() == RoleType.ADMIN) {
+            // ✅ ADMIN — can update ANY issue, no restriction
+            issue.setStatus(request.getStatus());
+            log.info("Issue #{} status → {} | by ADMIN: {}",
+                    id, request.getStatus(), userEmail);
+
+        } else if (currentUser.getRole() == RoleType.REGIONAL_ADMIN) {
+            // ✅ REGIONAL_ADMIN — only their zone or directly assigned to them
+            boolean isTheirZone     = issue.getZone() != null
+                    && issue.getZone() == currentUser.getZone();
+
+            boolean isAssignedToThem = issue.getAssignedTo() != null
+                    && issue.getAssignedTo().getId().equals(currentUser.getId());
+
+            if (!isTheirZone && !isAssignedToThem) {
+                log.warn("REGIONAL_ADMIN {} tried to update issue #{} outside their zone {}",
+                        userEmail, id, currentUser.getZone());
+                throw new UnauthorizedException(
+                        "You can only update issues in your zone: " + currentUser.getZone());
+            }
+
+            issue.setStatus(request.getStatus());
+            log.info("Issue #{} status → {} | by REGIONAL_ADMIN: {} (zone: {})",
+                    id, request.getStatus(), userEmail, currentUser.getZone());
+
+        } else {
+            throw new UnauthorizedException(
+                    "You do not have permission to update issue status.");
+        }
+
         Issue updated = issueRepository.save(issue);
 
         // Notify the issue owner
@@ -118,9 +149,6 @@ public class IssueServiceImpl implements IssueService {
                 .message(msg)
                 .user(issue.getCreatedBy())
                 .build());
-
-        log.info("Issue #{} status → {} | owner notified: {}",
-                id, request.getStatus(), issue.getCreatedBy().getEmail());
 
         return mapToResponse(updated);
     }
@@ -135,8 +163,8 @@ public class IssueServiceImpl implements IssueService {
     @Override
     @Transactional
     public CommentResponse addComment(Long issueId,
-                                       CommentRequest request,
-                                       String userEmail) {
+                                      CommentRequest request,
+                                      String userEmail) {
         User user   = findUserByEmail(userEmail);
         Issue issue = findIssueById(issueId);
 

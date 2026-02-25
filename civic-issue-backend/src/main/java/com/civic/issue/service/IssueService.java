@@ -13,7 +13,7 @@ public interface IssueService {
     List<IssueResponse> getAllIssues();
     List<IssueResponse> getMyIssues(String userEmail);
     IssueResponse getIssueById(Long id);
-    IssueResponse updateIssueStatus(Long id, UpdateStatusRequest request);
+    IssueResponse updateIssueStatus(Long id, UpdateStatusRequest request, String userEmail);
     void deleteIssue(Long id);
     CommentResponse addComment(Long issueId, CommentRequest request, String userEmail);
 }

@@ -83,33 +83,36 @@ export default function EvidenceCapture({ onCapture, onLocationCapture }) {
 
   // ── Step 3: Capture photo + draw watermark ────────────────────────
   const capturePhoto = useCallback(() => {
-    const video  = videoRef.current
-    const canvas = canvasRef.current
-    if (!video || !canvas) return
+  const video  = videoRef.current
+  const canvas = canvasRef.current
+  if (!video || !canvas) return
 
-    const now = new Date()
-    canvas.width  = video.videoWidth  || 1280
-    canvas.height = video.videoHeight || 720
+  const now = new Date()
 
-    const ctx = canvas.getContext('2d')
+  // ✅ Fix 2 — Resize to max 800px wide (reduces 3MB → ~200KB)
+  const MAX_WIDTH = 800
+  const scale     = Math.min(1, MAX_WIDTH / (video.videoWidth || 1280))
+  canvas.width    = (video.videoWidth  || 1280) * scale
+  canvas.height   = (video.videoHeight || 720)  * scale
 
-    // Draw video frame
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+  const ctx = canvas.getContext('2d')
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+  drawWatermark(ctx, canvas.width, canvas.height, now)
 
-    // Draw watermark
-    drawWatermark(ctx, canvas.width, canvas.height, now)
+  // ✅ Fix 2 — Quality 0.6 = good evidence quality, small file
+  canvas.toBlob((blob) => {
+    const file       = new File([blob], `evidence_${Date.now()}.jpg`, { type: 'image/jpeg' })
+    const previewUrl = URL.createObjectURL(blob)
+    const timestamp  = now.toISOString()
 
-    canvas.toBlob((blob) => {
-      const file       = new File([blob], `evidence_${Date.now()}.jpg`, { type: 'image/jpeg' })
-      const previewUrl = URL.createObjectURL(blob)
-      const timestamp  = now.toISOString()
+    console.log(`📸 Photo size: ${(blob.size / 1024).toFixed(1)} KB`)
 
-      setCaptured({ file, previewUrl, timestamp })
-      onCapture?.({ file, timestamp, location })
-      stopCamera()
-      setPhase('captured')
-    }, 'image/jpeg', 0.92)
-  }, [location, onCapture, stopCamera])
+    setCaptured({ file, previewUrl, timestamp })
+    onCapture?.({ file, timestamp, location })
+    stopCamera()
+    setPhase('captured')
+  }, 'image/jpeg', 0.6)  // ✅ 0.6 = compressed
+}, [location, onCapture, stopCamera])
 
   // ── Watermark drawing ─────────────────────────────────────────────
   const drawWatermark = (ctx, w, h, now) => {

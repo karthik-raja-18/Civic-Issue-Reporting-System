@@ -77,8 +77,12 @@ public class IssueController {
     @PreAuthorize("hasAnyRole('ADMIN','REGIONAL_ADMIN')")
     public ResponseEntity<ApiResponse<IssueResponse>> updateStatus(
             @PathVariable Long id,
-            @Valid @RequestBody UpdateStatusRequest request) {
-        IssueResponse response = issueService.updateIssueStatus(id, request);
+            @Valid @RequestBody UpdateStatusRequest request,
+            @AuthenticationPrincipal UserDetails userDetails) {  // ✅ add this
+
+        IssueResponse response = issueService.updateIssueStatus(
+                id, request, userDetails.getUsername());          // ✅ pass email
+
         return ResponseEntity.ok(ApiResponse.success("Issue status updated", response));
     }
 
