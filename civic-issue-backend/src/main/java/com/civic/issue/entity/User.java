@@ -1,6 +1,7 @@
 package com.civic.issue.entity;
 
 import com.civic.issue.enums.RoleType;
+import com.civic.issue.enums.Zone;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -33,6 +34,11 @@ public class User {
     @Column(nullable = false)
     @Builder.Default
     private RoleType role = RoleType.USER;
+
+    // ✅ NEW — Which Coimbatore zone this admin manages (null for regular USERs)
+    @Enumerated(EnumType.STRING)
+    @Column(name = "zone")
+    private Zone zone;
 
     @OneToMany(mappedBy = "createdBy", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default

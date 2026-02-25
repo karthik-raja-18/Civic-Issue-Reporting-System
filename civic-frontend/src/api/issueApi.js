@@ -21,4 +21,14 @@ export const issueApi = {
 
   /** POST /api/issues/:id/comments */
   addComment: (id, text) => api.post(`/api/issues/${id}/comments`, { text }),
+
+  /**
+   * ✅ NEW — POST /api/issues/upload-image
+   * Upload live evidence photo as multipart/form-data.
+   * formData must contain: file, capturedAt, latitude, longitude
+   */
+  uploadImage: (formData) =>
+    api.post('/api/issues/upload-image', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
 }

@@ -1,6 +1,7 @@
 package com.civic.issue.entity;
 
 import com.civic.issue.enums.IssueStatus;
+import com.civic.issue.enums.Zone;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -49,6 +50,17 @@ public class Issue {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by_id", nullable = false)
     private User createdBy;
+
+    // ✅ NEW — Coimbatore zone auto-detected from lat/lng
+    @Enumerated(EnumType.STRING)
+    @Column(name = "zone")
+    @Builder.Default
+    private Zone zone = Zone.UNASSIGNED;
+
+    // ✅ NEW — Regional admin this issue is assigned to (null = unassigned)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assigned_to_id")
+    private User assignedTo;
 
     @OneToMany(mappedBy = "issue", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default

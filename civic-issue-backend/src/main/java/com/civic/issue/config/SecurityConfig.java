@@ -30,7 +30,7 @@ import java.util.List;
 public class SecurityConfig {
 
     private final CustomUserDetailsService userDetailsService;
-    private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final JwtAuthenticationFilter  jwtAuthenticationFilter;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -46,7 +46,8 @@ public class SecurityConfig {
     }
 
     @Bean
-    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+    public AuthenticationManager authenticationManager(
+            AuthenticationConfiguration config) throws Exception {
         return config.getAuthenticationManager();
     }
 
@@ -58,18 +59,47 @@ public class SecurityConfig {
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        // Public endpoints
+
+                        // ── Public endpoints ──────────────────────────────────────
                         .requestMatchers("/api/auth/**").permitAll()
-                        // GET issues is accessible to all authenticated users
-                        .requestMatchers(HttpMethod.GET, "/api/issues", "/api/issues/**").authenticated()
-                        // Only ADMIN can change status or delete
-                        .requestMatchers(HttpMethod.PUT, "/api/issues/*/status").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.DELETE, "/api/issues/**").hasRole("ADMIN")
-                        // All other requests require authentication
+
+                        // ── Issue read — all authenticated users ──────────────────
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/issues", "/api/issues/**").authenticated()
+
+                        // ── Image upload — all authenticated users ────────────────
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/issues/upload-image").authenticated()  // ✅ NEW
+
+                        // ── Issue create + comment — all authenticated users ───────
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/issues", "/api/issues/*/comments").authenticated()
+
+                        // ── Status update — ADMIN or REGIONAL_ADMIN ───────────────
+                        .requestMatchers(HttpMethod.PUT,
+                                "/api/issues/*/status")
+                        .hasAnyRole("ADMIN", "REGIONAL_ADMIN")          // ✅ UPDATED
+
+                        // ── Delete — ADMIN only ───────────────────────────────────
+                        .requestMatchers(HttpMethod.DELETE,
+                                "/api/issues/**").hasRole("ADMIN")
+
+                        // ── Admin management — ADMIN only ─────────────────────────
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")      // ✅ NEW
+
+                        // ── Regional admin endpoints ───────────────────────────────
+                        .requestMatchers("/api/regional/**")
+                        .hasAnyRole("ADMIN", "REGIONAL_ADMIN")          // ✅ NEW
+
+                        // ── Notifications — authenticated ──────────────────────────
+                        .requestMatchers("/api/notifications").authenticated()
+
+                        // ── Everything else requires auth ──────────────────────────
                         .anyRequest().authenticated()
                 )
                 .authenticationProvider(authenticationProvider())
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthenticationFilter,
+                        UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
@@ -78,9 +108,11 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowedOrigins(List.of("*"));
-        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        config.setAllowedMethods(
+                List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        UrlBasedCorsConfigurationSource source =
+                new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);
         return source;
     }

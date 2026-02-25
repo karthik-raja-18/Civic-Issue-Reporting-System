@@ -9,12 +9,15 @@ import com.civic.issue.entity.Comment;
 import com.civic.issue.entity.Issue;
 import com.civic.issue.entity.Notification;
 import com.civic.issue.entity.User;
+import com.civic.issue.enums.RoleType;
+import com.civic.issue.enums.Zone;
 import com.civic.issue.exception.ResourceNotFoundException;
 import com.civic.issue.repository.CommentRepository;
 import com.civic.issue.repository.IssueRepository;
 import com.civic.issue.repository.NotificationRepository;
 import com.civic.issue.repository.UserRepository;
 import com.civic.issue.service.IssueService;
+import com.civic.issue.service.ZoneDetector;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -22,21 +25,31 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class IssueServiceImpl implements IssueService {
 
-    private final IssueRepository issueRepository;
-    private final UserRepository userRepository;
-    private final CommentRepository commentRepository;
+    private final IssueRepository        issueRepository;
+    private final UserRepository         userRepository;
+    private final CommentRepository      commentRepository;
     private final NotificationRepository notificationRepository;
+    private final ZoneDetector           zoneDetector;   // ✅ NEW
 
     @Override
     @Transactional
     public IssueResponse createIssue(IssueRequest request, String userEmail) {
         User user = findUserByEmail(userEmail);
+
+        // ✅ NEW — Detect Coimbatore zone from coordinates
+        Zone detectedZone = zoneDetector.detectZone(
+                request.getLatitude(), request.getLongitude());
+
+        // ✅ NEW — Find regional admin for this zone
+        Optional<User> regionalAdmin = userRepository
+                .findByRoleAndZone(RoleType.REGIONAL_ADMIN, detectedZone);
 
         Issue issue = Issue.builder()
                 .title(request.getTitle())
@@ -46,10 +59,21 @@ public class IssueServiceImpl implements IssueService {
                 .latitude(request.getLatitude())
                 .longitude(request.getLongitude())
                 .createdBy(user)
+                .zone(detectedZone)                                    // ✅ NEW
+                .assignedTo(regionalAdmin.orElse(null))                // ✅ NEW
                 .build();
 
         Issue saved = issueRepository.save(issue);
-        log.info("Issue created with id: {} by user: {}", saved.getId(), userEmail);
+
+        // ✅ NEW — Log zone assignment result
+        if (regionalAdmin.isPresent()) {
+            log.info("Issue #{} → Zone: {} → Assigned to: {}",
+                    saved.getId(), detectedZone, regionalAdmin.get().getEmail());
+        } else {
+            log.info("Issue #{} → Zone: {} → No regional admin found — UNASSIGNED",
+                    saved.getId(), detectedZone);
+        }
+
         return mapToResponse(saved);
     }
 
@@ -75,8 +99,7 @@ public class IssueServiceImpl implements IssueService {
     @Override
     @Transactional(readOnly = true)
     public IssueResponse getIssueById(Long id) {
-        Issue issue = findIssueById(id);
-        return mapToResponse(issue);
+        return mapToResponse(findIssueById(id));
     }
 
     @Override
@@ -86,18 +109,17 @@ public class IssueServiceImpl implements IssueService {
         issue.setStatus(request.getStatus());
         Issue updated = issueRepository.save(issue);
 
-        // Create notification for issue owner
-        String notificationMessage = String.format(
+        // Notify the issue owner
+        String msg = String.format(
                 "Your issue '%s' status has been updated to %s.",
-                issue.getTitle(), request.getStatus().name()
-        );
-        Notification notification = Notification.builder()
-                .message(notificationMessage)
-                .user(issue.getCreatedBy())
-                .build();
-        notificationRepository.save(notification);
+                issue.getTitle(), request.getStatus().name());
 
-        log.info("Issue {} status updated to {} — notification sent to user {}",
+        notificationRepository.save(Notification.builder()
+                .message(msg)
+                .user(issue.getCreatedBy())
+                .build());
+
+        log.info("Issue #{} status → {} | owner notified: {}",
                 id, request.getStatus(), issue.getCreatedBy().getEmail());
 
         return mapToResponse(updated);
@@ -106,15 +128,16 @@ public class IssueServiceImpl implements IssueService {
     @Override
     @Transactional
     public void deleteIssue(Long id) {
-        Issue issue = findIssueById(id);
-        issueRepository.delete(issue);
-        log.info("Issue {} deleted", id);
+        issueRepository.delete(findIssueById(id));
+        log.info("Issue #{} deleted", id);
     }
 
     @Override
     @Transactional
-    public CommentResponse addComment(Long issueId, CommentRequest request, String userEmail) {
-        User user = findUserByEmail(userEmail);
+    public CommentResponse addComment(Long issueId,
+                                       CommentRequest request,
+                                       String userEmail) {
+        User user   = findUserByEmail(userEmail);
         Issue issue = findIssueById(issueId);
 
         Comment comment = Comment.builder()
@@ -134,7 +157,7 @@ public class IssueServiceImpl implements IssueService {
                 .build();
     }
 
-    // ─── Mapping Helpers ─────────────────────────────────────────────────────────
+    // ── Mapping ───────────────────────────────────────────────────────────────
 
     private IssueResponse mapToResponse(Issue issue) {
         List<CommentResponse> comments = issue.getComments().stream()
@@ -168,11 +191,10 @@ public class IssueServiceImpl implements IssueService {
                 .build();
     }
 
-    // ─── Finders ─────────────────────────────────────────────────────────────────
-
     private User findUserByEmail(String email) {
         return userRepository.findByEmail(email)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + email));
+                .orElseThrow(() -> new UsernameNotFoundException(
+                        "User not found: " + email));
     }
 
     private Issue findIssueById(Long id) {

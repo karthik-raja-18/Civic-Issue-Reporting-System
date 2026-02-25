@@ -10,6 +10,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -19,34 +20,56 @@ import java.util.Map;
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(ResourceNotFoundException.class)
-    public ResponseEntity<ApiResponse<Void>> handleResourceNotFound(ResourceNotFoundException ex) {
+    public ResponseEntity<ApiResponse<Void>> handleResourceNotFound(
+            ResourceNotFoundException ex) {
         log.error("Resource not found: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(ApiResponse.error(ex.getMessage()));
     }
 
     @ExceptionHandler(DuplicateResourceException.class)
-    public ResponseEntity<ApiResponse<Void>> handleDuplicate(DuplicateResourceException ex) {
+    public ResponseEntity<ApiResponse<Void>> handleDuplicate(
+            DuplicateResourceException ex) {
         log.error("Duplicate resource: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ApiResponse.error(ex.getMessage()));
     }
 
     @ExceptionHandler(UnauthorizedException.class)
-    public ResponseEntity<ApiResponse<Void>> handleUnauthorized(UnauthorizedException ex) {
+    public ResponseEntity<ApiResponse<Void>> handleUnauthorized(
+            UnauthorizedException ex) {
         log.error("Unauthorized: {}", ex.getMessage());
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(ApiResponse.error(ex.getMessage()));
     }
 
+    // ✅ NEW — image upload / evidence validation rejection
+    @ExceptionHandler(IssueRejectionException.class)
+    public ResponseEntity<ApiResponse<Void>> handleIssueRejection(
+            IssueRejectionException ex) {
+        log.warn("Issue/upload rejected: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    // ✅ NEW — file too large
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMaxUploadSize(
+            MaxUploadSizeExceededException ex) {
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+                .body(ApiResponse.error("File too large. Maximum allowed size is 10 MB."));
+    }
+
     @ExceptionHandler(AccessDeniedException.class)
-    public ResponseEntity<ApiResponse<Void>> handleAccessDenied(AccessDeniedException ex) {
+    public ResponseEntity<ApiResponse<Void>> handleAccessDenied(
+            AccessDeniedException ex) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(ApiResponse.error("Access denied: insufficient permissions"));
     }
 
     @ExceptionHandler(BadCredentialsException.class)
-    public ResponseEntity<ApiResponse<Void>> handleBadCredentials(BadCredentialsException ex) {
+    public ResponseEntity<ApiResponse<Void>> handleBadCredentials(
+            BadCredentialsException ex) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(ApiResponse.error("Invalid email or password"));
     }
@@ -56,9 +79,9 @@ public class GlobalExceptionHandler {
             MethodArgumentNotValidException ex) {
         Map<String, String> errors = new HashMap<>();
         ex.getBindingResult().getAllErrors().forEach(error -> {
-            String fieldName = ((FieldError) error).getField();
-            String errorMessage = error.getDefaultMessage();
-            errors.put(fieldName, errorMessage);
+            String field   = ((FieldError) error).getField();
+            String message = error.getDefaultMessage();
+            errors.put(field, message);
         });
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.<Map<String, String>>builder()
@@ -69,9 +92,10 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiResponse<Void>> handleGenericException(Exception ex) {
+    public ResponseEntity<ApiResponse<Void>> handleGeneric(Exception ex) {
         log.error("Unexpected error: {}", ex.getMessage(), ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ApiResponse.error("An unexpected error occurred. Please try again later."));
+                .body(ApiResponse.error(
+                        "An unexpected error occurred. Please try again later."));
     }
 }
