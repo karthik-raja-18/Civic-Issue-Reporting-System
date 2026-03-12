@@ -6,7 +6,7 @@ import { timeAgo, STATUS_META, extractError } from '../utils/helpers'
 import Spinner from '../components/Spinner'
 import AlertMessage from '../components/AlertMessage'
 
-const STATUSES = ['PENDING', 'IN_PROGRESS', 'RESOLVED']
+const STATUSES = ['PENDING', 'IN_PROGRESS']
 
 const ZONE_COLOR = {
   NORTH:   'text-blue-400   bg-blue-500/10   border-blue-500/30',

@@ -1,4 +1,5 @@
-import { useState, lazy, Suspense } from 'react'
+import { useState, lazy, Suspense, useRef } from 'react'
+import ReCAPTCHA from 'react-google-recaptcha'
 import { useNavigate, Link } from 'react-router-dom'
 import { issueApi } from '../api/issueApi'
 import { extractError } from '../utils/helpers'
@@ -24,9 +25,12 @@ export default function CreateIssue() {
   const [location,   setLocation]   = useState(null)  // { latitude, longitude }
   const [evidence,   setEvidence]   = useState(null)  // from EvidenceCapture
   const [imageUrl,   setImageUrl]   = useState('')    // Cloudinary URL after upload
+  const [imagePublicId, setImagePublicId] = useState('')
   const [uploading,  setUploading]  = useState(false)
   const [loading,    setLoading]    = useState(false)
   const [error,      setError]      = useState(null)
+  const [captchaToken, setCaptchaToken] = useState(null)
+  const recaptchaRef = useRef(null)
 
   // Photo uploaded = step complete
   const photoUploaded = !!imageUrl
@@ -63,12 +67,14 @@ const handleUpload = async () => {
   setError(null)
   try {
     // ✅ Fix 3 — Direct to Cloudinary, no backend, no timeout
-    const url = await issueApi.uploadImageDirect(
+    const uploadData = await issueApi.uploadImageDirect(
       evidence.file,
       location?.latitude,
-      location?.longitude
+      location?.longitude,
+      evidence.timestamp
     )
-    setImageUrl(url)
+    setImageUrl(uploadData.imageUrl)
+    setImagePublicId(uploadData.publicId)
   } catch (err) {
     setError('Upload failed: ' + (err.message || 'Check internet connection and try again.'))
   } finally {
@@ -94,10 +100,12 @@ const handleUpload = async () => {
     setError(null)
     try {
       const payload = {
+        captchaToken: captchaToken,
         title:       form.title,
         description: form.description,
         category:    form.category,
         imageUrl:    imageUrl,
+        imagePublicId: imagePublicId,
         latitude:    location.latitude,
         longitude:   location.longitude,
       }
@@ -275,12 +283,22 @@ const handleUpload = async () => {
             )}
           </div>
 
+          {/* ── CAPTCHA ── */}
+          <div className="flex justify-center py-2">
+            <ReCAPTCHA
+              ref={recaptchaRef}
+              sitekey="6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI" // standard test key
+              onChange={(token) => setCaptchaToken(token)}
+              theme="dark"
+            />
+          </div>
+
           {/* ── Submit ── */}
           <div className="pt-2 border-t border-ink-800 flex items-center gap-3">
             <button
               type="submit"
-              disabled={!photoUploaded || loading}
-              title={!photoUploaded ? 'Upload a photo first' : ''}
+              disabled={!photoUploaded || loading || !captchaToken}
+              title={!photoUploaded ? 'Upload a photo first' : !captchaToken ? 'Complete CAPTCHA' : ''}
               className={`btn-primary gap-2 ${
                 !photoUploaded
                   ? 'opacity-40 cursor-not-allowed'

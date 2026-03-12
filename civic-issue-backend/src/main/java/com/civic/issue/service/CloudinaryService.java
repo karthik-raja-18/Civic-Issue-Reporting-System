@@ -96,8 +96,19 @@ public class CloudinaryService {
         } catch (IssueRejectionException | IOException e) {
             throw e;
         } catch (Exception e) {
-            log.error("❌ Upload failed: {}", e.getMessage(), e);
+            log.error("❌ Cloudinary Upload Failed! Reason: {}", e.getMessage());
+            log.error("Trace:", e);
             throw new IOException("Upload failed: " + e.getMessage(), e);
+        }
+    }
+
+    public void deleteImage(String publicId) {
+        if (publicId == null || publicId.isBlank()) return;
+        try {
+            cloudinary.uploader().destroy(publicId, ObjectUtils.emptyMap());
+            log.info("🗑️ Deleted from Cloudinary: {}", publicId);
+        } catch (Exception e) {
+            log.warn("⚠️ Failed to delete image {}: {}", publicId, e.getMessage());
         }
     }
 }

@@ -99,6 +99,17 @@ export default function LocationPicker({ value, onSelect }) {
     setQuery(result.display_name.split(',')[0])
   }
 
+  // ── Coimbatore Bounds (District level) ──────────────────────────────────
+  const COIMBATORE_BOUNDS = {
+    latMin: 10.00, latMax: 11.60, // Widened slightly
+    lngMin: 76.40, lngMax: 77.70  // Widened slightly
+  }
+
+  const isWithinDistrict = (lat, lng) => {
+    return lat >= COIMBATORE_BOUNDS.latMin && lat <= COIMBATORE_BOUNDS.latMax &&
+           lng >= COIMBATORE_BOUNDS.lngMin && lng <= COIMBATORE_BOUNDS.lngMax
+  }
+
   // ── Use current GPS location ──────────────────────────────────────────────
   const handleCurrentLocation = () => {
     if (!navigator.geolocation) {
@@ -111,6 +122,13 @@ export default function LocationPicker({ value, onSelect }) {
       ({ coords }) => {
         const lat = coords.latitude
         const lng = coords.longitude
+
+        if (!isWithinDistrict(lat, lng)) {
+          setSearchError(`Detected location (${lat.toFixed(4)}, ${lng.toFixed(4)}) is outside Coimbatore district. Please select it manually on the map.`)
+          setLocating(false)
+          return
+        }
+
         onSelect({ latitude: lat, longitude: lng })
         setPanTarget([lat, lng])
         setLocating(false)

@@ -6,7 +6,8 @@ import ProtectedRoute       from './components/ProtectedRoute'
 import AdminRoute           from './components/AdminRoute'
 import RegionalAdminRoute   from './components/RegionalAdminRoute'   // ✅ NEW
 
-import Login                from './pages/Login'
+import Landing            from './pages/Landing'
+import Login              from './pages/Login'
 import Register             from './pages/Register'
 import Dashboard            from './pages/Dashboard'
 import CreateIssue          from './pages/CreateIssue'
@@ -27,13 +28,9 @@ export default function App() {
       <main className="flex-1">
         <Routes>
           {/* Public */}
+          <Route path="/"         element={<Landing />} />
           <Route path="/login"    element={<Login />} />
           <Route path="/register" element={<Register />} />
-
-          {/* Default redirect */}
-          <Route path="/"
-            element={<Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />}
-          />
 
           {/* Authenticated */}
           <Route path="/dashboard"    element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />

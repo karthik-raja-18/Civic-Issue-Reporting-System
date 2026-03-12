@@ -1,22 +1,21 @@
 package com.civic.issue.service.impl;
 
-import com.civic.issue.dto.request.CommentRequest;
-import com.civic.issue.dto.request.IssueRequest;
-import com.civic.issue.dto.request.UpdateStatusRequest;
+import com.civic.issue.dto.request.*;
 import com.civic.issue.dto.response.CommentResponse;
 import com.civic.issue.dto.response.IssueResponse;
 import com.civic.issue.entity.Comment;
 import com.civic.issue.entity.Issue;
 import com.civic.issue.entity.Notification;
 import com.civic.issue.entity.User;
+import com.civic.issue.enums.IssueStatus;
 import com.civic.issue.enums.RoleType;
 import com.civic.issue.enums.Zone;
+import com.civic.issue.exception.IssueRejectionException;
 import com.civic.issue.exception.ResourceNotFoundException;
 import com.civic.issue.exception.UnauthorizedException;
-import com.civic.issue.repository.CommentRepository;
-import com.civic.issue.repository.IssueRepository;
-import com.civic.issue.repository.NotificationRepository;
-import com.civic.issue.repository.UserRepository;
+import com.civic.issue.repository.*;
+import com.civic.issue.service.CaptchaService;
+import com.civic.issue.service.CloudinaryService;
 import com.civic.issue.service.IssueService;
 import com.civic.issue.service.ZoneDetector;
 import lombok.RequiredArgsConstructor;
@@ -38,11 +37,23 @@ public class IssueServiceImpl implements IssueService {
     private final CommentRepository      commentRepository;
     private final NotificationRepository notificationRepository;
     private final ZoneDetector           zoneDetector;
+    private final CaptchaService captchaService;
+    private final CloudinaryService cloudinaryService;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // CREATE
+    // ─────────────────────────────────────────────────────────────────────────
 
     @Override
     @Transactional
     public IssueResponse createIssue(IssueRequest request, String userEmail) {
         User user = findUserByEmail(userEmail);
+
+        // Verify reCAPTCHA
+        if (!captchaService.verify(request.getCaptchaToken())) {
+            throw new IssueRejectionException(
+                    "CAPTCHA verification failed. Please complete the CAPTCHA and try again.");
+        }
 
         Zone detectedZone = zoneDetector.detectZone(
                 request.getLatitude(), request.getLongitude());
@@ -55,6 +66,7 @@ public class IssueServiceImpl implements IssueService {
                 .description(request.getDescription())
                 .category(request.getCategory())
                 .imageUrl(request.getImageUrl())
+                .imagePublicId(request.getImagePublicId())
                 .latitude(request.getLatitude())
                 .longitude(request.getLongitude())
                 .createdBy(user)
@@ -62,26 +74,27 @@ public class IssueServiceImpl implements IssueService {
                 .assignedTo(regionalAdmin.orElse(null))
                 .build();
 
-        Issue saved = issueRepository.save(issue);
-
-        if (regionalAdmin.isPresent()) {
-            log.info("Issue #{} → Zone: {} → Assigned to: {}",
-                    saved.getId(), detectedZone, regionalAdmin.get().getEmail());
-        } else {
-            log.info("Issue #{} → Zone: {} → No regional admin found — UNASSIGNED",
-                    saved.getId(), detectedZone);
+        if (regionalAdmin.isEmpty() && detectedZone != Zone.UNASSIGNED) {
+            log.warn("No regional admin found for zone: {}. Issue #{} left unassigned.", detectedZone, issue.getTitle());
         }
+
+        Issue saved = issueRepository.save(issue);
+        log.info("Issue #{} created → Zone: {} → Assigned: {}",
+                saved.getId(), detectedZone,
+                regionalAdmin.map(User::getEmail).orElse("UNASSIGNED"));
 
         return mapToResponse(saved);
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // READ
+    // ─────────────────────────────────────────────────────────────────────────
 
     @Override
     @Transactional(readOnly = true)
     public List<IssueResponse> getAllIssues() {
         return issueRepository.findAllByOrderByCreatedAtDesc()
-                .stream()
-                .map(this::mapToResponse)
-                .toList();
+                .stream().map(this::mapToResponse).toList();
     }
 
     @Override
@@ -89,9 +102,7 @@ public class IssueServiceImpl implements IssueService {
     public List<IssueResponse> getMyIssues(String userEmail) {
         User user = findUserByEmail(userEmail);
         return issueRepository.findByCreatedByOrderByCreatedAtDesc(user)
-                .stream()
-                .map(this::mapToResponse)
-                .toList();
+                .stream().map(this::mapToResponse).toList();
     }
 
     @Override
@@ -100,81 +111,186 @@ public class IssueServiceImpl implements IssueService {
         return mapToResponse(findIssueById(id));
     }
 
-    // ✅ UPDATED — now takes userEmail, enforces zone restriction
+    // ─────────────────────────────────────────────────────────────────────────
+    // STATUS UPDATE (generic — for PENDING → IN_PROGRESS etc.)
+    // ─────────────────────────────────────────────────────────────────────────
+
     @Override
     @Transactional
     public IssueResponse updateIssueStatus(Long id, UpdateStatusRequest request, String userEmail) {
-        Issue issue = findIssueById(id);
+        Issue issue       = findIssueById(id);
+        User  currentUser = findUserByEmail(userEmail);
 
-        User currentUser = findUserByEmail(userEmail);
+        checkZonePermission(issue, currentUser);
 
-        if (currentUser.getRole() == RoleType.ADMIN) {
-            // ✅ ADMIN — can update ANY issue, no restriction
-            issue.setStatus(request.getStatus());
-            log.info("Issue #{} status → {} | by ADMIN: {}",
-                    id, request.getStatus(), userEmail);
-
-        } else if (currentUser.getRole() == RoleType.REGIONAL_ADMIN) {
-            // ✅ REGIONAL_ADMIN — only their zone or directly assigned to them
-            boolean isTheirZone     = issue.getZone() != null
-                    && issue.getZone() == currentUser.getZone();
-
-            boolean isAssignedToThem = issue.getAssignedTo() != null
-                    && issue.getAssignedTo().getId().equals(currentUser.getId());
-
-            if (!isTheirZone && !isAssignedToThem) {
-                log.warn("REGIONAL_ADMIN {} tried to update issue #{} outside their zone {}",
-                        userEmail, id, currentUser.getZone());
-                throw new UnauthorizedException(
-                        "You can only update issues in your zone: " + currentUser.getZone());
-            }
-
-            issue.setStatus(request.getStatus());
-            log.info("Issue #{} status → {} | by REGIONAL_ADMIN: {} (zone: {})",
-                    id, request.getStatus(), userEmail, currentUser.getZone());
-
-        } else {
-            throw new UnauthorizedException(
-                    "You do not have permission to update issue status.");
+        // Guard: use resolveIssue() for RESOLVED — it requires a photo
+        if (request.getStatus() == IssueStatus.RESOLVED) {
+            throw new IssueRejectionException(
+                    "To mark as Resolved you must upload a proof photo. Use the 'Mark as Resolved' button.");
         }
 
+        issue.setStatus(request.getStatus());
         Issue updated = issueRepository.save(issue);
 
-        // Notify the issue owner
-        String msg = String.format(
-                "Your issue '%s' status has been updated to %s.",
-                issue.getTitle(), request.getStatus().name());
+        notify(issue.getCreatedBy(),
+                String.format("Your issue '%s' status updated to %s.",
+                        issue.getTitle(), request.getStatus().name()));
 
-        notificationRepository.save(Notification.builder()
-                .message(msg)
-                .user(issue.getCreatedBy())
-                .build());
-
+        log.info("Issue #{} → {} by {}", id, request.getStatus(), userEmail);
         return mapToResponse(updated);
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // ✅ RESOLVE — Admin uploads proof photo, status → RESOLVED
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @Override
+    @Transactional
+    public IssueResponse resolveIssue(Long id, ResolveIssueRequest request, String userEmail) {
+        Issue issue       = findIssueById(id);
+        User  currentUser = findUserByEmail(userEmail);
+
+        checkZonePermission(issue, currentUser);
+
+        if (issue.getStatus() == IssueStatus.CLOSED) {
+            throw new IssueRejectionException("Issue is already closed.");
+        }
+
+        issue.setStatus(IssueStatus.RESOLVED);
+        issue.setResolvedImageUrl(request.getResolvedImageUrl());
+        issue.setResolvedImagePublicId(request.getResolvedImagePublicId());
+        issue.setReopenNote(null); // clear any previous reopen note
+        Issue updated = issueRepository.save(issue);
+
+        // Notify reporter to verify the fix
+        notify(issue.getCreatedBy(), String.format(
+                "🔧 Your issue '%s' has been resolved. Please check the proof photo and confirm.",
+                issue.getTitle()));
+
+        log.info("Issue #{} RESOLVED by {} — proof: {}", id, userEmail, request.getResolvedImageUrl());
+        return mapToResponse(updated);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // ✅ CONFIRM RESOLUTION — Reporter says "Yes, it's fixed" → CLOSED
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @Override
+    @Transactional
+    public IssueResponse confirmResolution(Long id, String userEmail) {
+        Issue issue    = findIssueById(id);
+        User  reporter = findUserByEmail(userEmail);
+
+        // Only the original reporter can confirm
+        if (!issue.getCreatedBy().getId().equals(reporter.getId())) {
+            throw new UnauthorizedException("Only the issue reporter can confirm resolution.");
+        }
+
+        if (issue.getStatus() != IssueStatus.RESOLVED) {
+            throw new IssueRejectionException(
+                    "Issue is not in RESOLVED state. Current status: " + issue.getStatus());
+        }
+
+        issue.setStatus(IssueStatus.CLOSED);
+        Issue updated = issueRepository.save(issue);
+
+        // ✅ Storage Optimization: Delete the ORIGINAL evidence image after reporter is satisfied
+        if (issue.getImagePublicId() != null) {
+            cloudinaryService.deleteImage(issue.getImagePublicId());
+            issue.setImagePublicId(null);
+            issue.setImageUrl(null); // Optional: break the link in DB too if you want to optimize DB
+            issueRepository.save(issue);
+        }
+
+        // Notify the admin/assigned person
+        User toNotify = issue.getAssignedTo() != null ? issue.getAssignedTo() : null;
+        if (toNotify != null) {
+            notify(toNotify, String.format(
+                    "✅ Reporter confirmed issue #%d '%s' is resolved. Issue closed.",
+                    issue.getId(), issue.getTitle()));
+        }
+
+        log.info("Issue #{} CLOSED — confirmed by reporter: {}", id, userEmail);
+        return mapToResponse(updated);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // ✅ REOPEN — Reporter says "Not fixed yet" → REOPENED
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @Override
+    @Transactional
+    public IssueResponse reopenIssue(Long id, ReopenIssueRequest request, String userEmail) {
+        Issue issue    = findIssueById(id);
+        User  reporter = findUserByEmail(userEmail);
+
+        // Only the original reporter can reopen
+        if (!issue.getCreatedBy().getId().equals(reporter.getId())) {
+            throw new UnauthorizedException("Only the issue reporter can reopen this issue.");
+        }
+
+        if (issue.getStatus() != IssueStatus.RESOLVED) {
+            throw new IssueRejectionException(
+                    "Issue can only be reopened when in RESOLVED state.");
+        }
+
+        issue.setStatus(IssueStatus.REOPENED);
+        issue.setReopenNote(request.getNote());
+        issue.setResolvedImageUrl(null); // clear old resolved photo — admin must re-upload
+        Issue updated = issueRepository.save(issue);
+
+        // Notify the assigned admin with the reporter's note
+        User toNotify = issue.getAssignedTo() != null ? issue.getAssignedTo() : null;
+        String noteText = (request.getNote() != null && !request.getNote().isBlank())
+                ? " Note: \"" + request.getNote() + "\""
+                : "";
+
+        if (toNotify != null) {
+            notify(toNotify, String.format(
+                    "⚠️ Reporter says issue #%d '%s' is NOT fixed yet.%s",
+                    issue.getId(), issue.getTitle(), noteText));
+        }
+
+        log.info("Issue #{} REOPENED by reporter: {} — note: {}", id, userEmail, request.getNote());
+        return mapToResponse(updated);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // DELETE
+    // ─────────────────────────────────────────────────────────────────────────
 
     @Override
     @Transactional
     public void deleteIssue(Long id) {
-        issueRepository.delete(findIssueById(id));
-        log.info("Issue #{} deleted", id);
+        Issue issue = findIssueById(id);
+        
+        // ✅ Delete all associated images from Cloudinary
+        if (issue.getImagePublicId() != null) {
+            cloudinaryService.deleteImage(issue.getImagePublicId());
+        }
+        if (issue.getResolvedImagePublicId() != null) {
+            cloudinaryService.deleteImage(issue.getResolvedImagePublicId());
+        }
+        
+        issueRepository.delete(issue);
+        log.info("Issue #{} deleted and images removed from Cloudinary", id);
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // COMMENT
+    // ─────────────────────────────────────────────────────────────────────────
 
     @Override
     @Transactional
-    public CommentResponse addComment(Long issueId,
-                                      CommentRequest request,
-                                      String userEmail) {
-        User user   = findUserByEmail(userEmail);
+    public CommentResponse addComment(Long issueId, CommentRequest request, String userEmail) {
+        User  user  = findUserByEmail(userEmail);
         Issue issue = findIssueById(issueId);
 
-        Comment comment = Comment.builder()
+        Comment saved = commentRepository.save(Comment.builder()
                 .text(request.getText())
                 .user(user)
                 .issue(issue)
-                .build();
-
-        Comment saved = commentRepository.save(comment);
+                .build());
 
         return CommentResponse.builder()
                 .id(saved.getId())
@@ -185,24 +301,55 @@ public class IssueServiceImpl implements IssueService {
                 .build();
     }
 
-    // ── Mapping ───────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // HELPERS
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /** ADMIN → any issue. REGIONAL_ADMIN → only their zone. */
+    private void checkZonePermission(Issue issue, User currentUser) {
+        if (currentUser.getRole() == RoleType.ADMIN) return;
+        if (currentUser.getRole() == RoleType.REGIONAL_ADMIN) {
+            boolean isTheirZone     = issue.getZone() != null
+                    && issue.getZone() == currentUser.getZone();
+            boolean isAssignedToThem = issue.getAssignedTo() != null
+                    && issue.getAssignedTo().getId().equals(currentUser.getId());
+            if (!isTheirZone && !isAssignedToThem) {
+                throw new UnauthorizedException(
+                        "You can only manage issues in your zone: " + currentUser.getZone());
+            }
+        } else {
+            throw new UnauthorizedException("Permission denied.");
+        }
+    }
+
+    private void notify(User user, String message) {
+        notificationRepository.save(Notification.builder()
+                .message(message).user(user).build());
+    }
 
     private IssueResponse mapToResponse(Issue issue) {
         List<CommentResponse> comments = issue.getComments().stream()
                 .map(c -> CommentResponse.builder()
-                        .id(c.getId())
-                        .text(c.getText())
+                        .id(c.getId()).text(c.getText())
                         .createdAt(c.getCreatedAt())
                         .userId(c.getUser().getId())
                         .userName(c.getUser().getName())
                         .build())
                 .toList();
 
-        IssueResponse.UserSummary userSummary = IssueResponse.UserSummary.builder()
+        IssueResponse.UserSummary createdBy = IssueResponse.UserSummary.builder()
                 .id(issue.getCreatedBy().getId())
                 .name(issue.getCreatedBy().getName())
                 .email(issue.getCreatedBy().getEmail())
                 .build();
+
+        IssueResponse.UserSummary assignedTo = issue.getAssignedTo() != null
+                ? IssueResponse.UserSummary.builder()
+                        .id(issue.getAssignedTo().getId())
+                        .name(issue.getAssignedTo().getName())
+                        .email(issue.getAssignedTo().getEmail())
+                        .build()
+                : null;
 
         return IssueResponse.builder()
                 .id(issue.getId())
@@ -210,19 +357,22 @@ public class IssueServiceImpl implements IssueService {
                 .description(issue.getDescription())
                 .category(issue.getCategory())
                 .status(issue.getStatus())
+                .zone(issue.getZone())
                 .imageUrl(issue.getImageUrl())
+                .resolvedImageUrl(issue.getResolvedImageUrl())   // ✅
+                .reopenNote(issue.getReopenNote())               // ✅
                 .latitude(issue.getLatitude())
                 .longitude(issue.getLongitude())
                 .createdAt(issue.getCreatedAt())
-                .createdBy(userSummary)
+                .createdBy(createdBy)
+                .assignedTo(assignedTo)
                 .comments(comments)
                 .build();
     }
 
     private User findUserByEmail(String email) {
         return userRepository.findByEmail(email)
-                .orElseThrow(() -> new UsernameNotFoundException(
-                        "User not found: " + email));
+                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + email));
     }
 
     private Issue findIssueById(Long id) {

@@ -21,10 +21,10 @@ import org.springframework.stereotype.Service;
 public class ZoneDetector {
 
     // ── Coimbatore District outer boundaries ──────────────────────────────────
-    private static final double DISTRICT_LAT_MIN =  10.25;
-    private static final double DISTRICT_LAT_MAX =  11.35;
-    private static final double DISTRICT_LNG_MIN =  76.65;
-    private static final double DISTRICT_LNG_MAX =  77.45;
+    private static final double DISTRICT_LAT_MIN =  10.00;
+    private static final double DISTRICT_LAT_MAX =  11.60;
+    private static final double DISTRICT_LNG_MIN =  76.40;
+    private static final double DISTRICT_LNG_MAX =  77.70;
 
     // ── Zone boundary thresholds ──────────────────────────────────────────────
     // NORTH: lat > 11.05 — covers Mettupalayam, Annur, Karamadai, Thudiyalur
@@ -56,6 +56,7 @@ public class ZoneDetector {
         }
 
         // Outside Coimbatore District entirely
+        log.info("📍 Detecting zone for coordinates: Lat={}, Lng={}", latitude, longitude);
         if (latitude  < DISTRICT_LAT_MIN || latitude  > DISTRICT_LAT_MAX ||
             longitude < DISTRICT_LNG_MIN || longitude > DISTRICT_LNG_MAX) {
             log.debug("Coordinates ({}, {}) outside Coimbatore District", latitude, longitude);

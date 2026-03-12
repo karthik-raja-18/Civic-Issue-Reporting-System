@@ -12,10 +12,8 @@ import java.util.List;
 
 @Entity
 @Table(name = "issues")
-@Getter
-@Setter
-@NoArgsConstructor
-@AllArgsConstructor
+@Getter @Setter
+@NoArgsConstructor @AllArgsConstructor
 @Builder
 public class Issue {
 
@@ -33,14 +31,26 @@ public class Issue {
     private String category;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, length = 20)
     @Builder.Default
     private IssueStatus status = IssueStatus.PENDING;
 
+    // Photo taken by reporter (before)
     private String imageUrl;
+    @Column(name = "image_public_id")
+    private String imagePublicId;
+
+    // ✅ NEW — Photo uploaded by admin as proof of fix (after)
+    @Column(name = "resolved_image_url")
+    private String resolvedImageUrl;
+    @Column(name = "resolved_image_public_id")
+    private String resolvedImagePublicId;
+
+    // ✅ NEW — Note from reporter when they reopen (optional)
+    @Column(name = "reopen_note", columnDefinition = "TEXT")
+    private String reopenNote;
 
     private Double latitude;
-
     private Double longitude;
 
     @CreationTimestamp
@@ -51,13 +61,11 @@ public class Issue {
     @JoinColumn(name = "created_by_id", nullable = false)
     private User createdBy;
 
-    // ✅ NEW — Coimbatore zone auto-detected from lat/lng
     @Enumerated(EnumType.STRING)
-    @Column(name = "zone")
+    @Column(name = "zone", length = 20)
     @Builder.Default
     private Zone zone = Zone.UNASSIGNED;
 
-    // ✅ NEW — Regional admin this issue is assigned to (null = unassigned)
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "assigned_to_id")
     private User assignedTo;

@@ -40,13 +40,25 @@ export default function EvidenceCapture({ onCapture, onLocationCapture }) {
 
     navigator.geolocation.getCurrentPosition(
       ({ coords }) => {
-        const loc = {
-          latitude:  coords.latitude,
-          longitude: coords.longitude,
-          accuracy:  Math.round(coords.accuracy),
+        const lat = coords.latitude
+        const lng = coords.longitude
+        
+        // Widened bounds for Coimbatore district
+        const withinDistrict = lat >= 10.00 && lat <= 11.60 &&
+                               lng >= 76.40 && lng <= 77.70
+
+        if (withinDistrict) {
+          const loc = {
+            latitude:  lat,
+            longitude: lng,
+            accuracy:  Math.round(coords.accuracy),
+          }
+          setLocation(loc)
+          onLocationCapture?.(loc)
+        } else {
+          console.warn('GPS location outside Coimbatore ignored')
+          setLocation(null)
         }
-        setLocation(loc)
-        onLocationCapture?.(loc)
         startCamera()
       },
       () => {

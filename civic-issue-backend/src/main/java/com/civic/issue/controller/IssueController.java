@@ -1,8 +1,6 @@
 package com.civic.issue.controller;
 
-import com.civic.issue.dto.request.CommentRequest;
-import com.civic.issue.dto.request.IssueRequest;
-import com.civic.issue.dto.request.UpdateStatusRequest;
+import com.civic.issue.dto.request.*;
 import com.civic.issue.dto.response.ApiResponse;
 import com.civic.issue.dto.response.CommentResponse;
 import com.civic.issue.dto.response.IssueResponse;
@@ -41,56 +39,84 @@ public class IssueController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<IssueResponse>> getIssueById(@PathVariable Long id) {
+    public ResponseEntity<ApiResponse<IssueResponse>> getById(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.success(issueService.getIssueById(id)));
     }
 
     @PostMapping
-    public ResponseEntity<ApiResponse<IssueResponse>> createIssue(
+    public ResponseEntity<ApiResponse<IssueResponse>> create(
             @Valid @RequestBody IssueRequest request,
             @AuthenticationPrincipal UserDetails userDetails) {
-        IssueResponse response = issueService.createIssue(request, userDetails.getUsername());
+        IssueResponse res = issueService.createIssue(request, userDetails.getUsername());
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.success("Issue created successfully", response));
+                .body(ApiResponse.success("Issue created", res));
     }
 
-    /**
-     * POST /api/issues/upload-image
-     * ✅ capturedAt is optional (required=false) — won't fail if frontend skips it
-     */
     @PostMapping("/upload-image")
     public ResponseEntity<ApiResponse<UploadResponse>> uploadImage(
-            @RequestParam("file")                                    MultipartFile file,
-            @RequestParam(value = "capturedAt",  required = false)  String  capturedAt,
-            @RequestParam(value = "latitude",    required = false)  Double  latitude,
-            @RequestParam(value = "longitude",   required = false)  Double  longitude,
+            @RequestParam("file")                                   MultipartFile file,
+            @RequestParam(value = "capturedAt",  required = false)  String capturedAt,
+            @RequestParam(value = "latitude",    required = false)  Double latitude,
+            @RequestParam(value = "longitude",   required = false)  Double longitude,
             @AuthenticationPrincipal UserDetails userDetails) throws IOException {
-
-        UploadResponse response = cloudinaryService.uploadEvidenceImage(
+        UploadResponse res = cloudinaryService.uploadEvidenceImage(
                 file, capturedAt, latitude, longitude, userDetails.getUsername());
-
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.success("Image uploaded successfully", response));
+                .body(ApiResponse.success("Image uploaded", res));
     }
 
+    // Generic status update — PENDING → IN_PROGRESS only
+    // (RESOLVED is blocked here — use /resolve endpoint instead)
     @PutMapping("/{id}/status")
     @PreAuthorize("hasAnyRole('ADMIN','REGIONAL_ADMIN')")
     public ResponseEntity<ApiResponse<IssueResponse>> updateStatus(
             @PathVariable Long id,
             @Valid @RequestBody UpdateStatusRequest request,
-            @AuthenticationPrincipal UserDetails userDetails) {  // ✅ add this
+            @AuthenticationPrincipal UserDetails userDetails) {
+        IssueResponse res = issueService.updateIssueStatus(
+                id, request, userDetails.getUsername());
+        return ResponseEntity.ok(ApiResponse.success("Status updated", res));
+    }
 
-        IssueResponse response = issueService.updateIssueStatus(
-                id, request, userDetails.getUsername());          // ✅ pass email
+    // ✅ Admin/Zone Admin marks resolved + uploads proof photo
+    @PutMapping("/{id}/resolve")
+    @PreAuthorize("hasAnyRole('ADMIN','REGIONAL_ADMIN')")
+    public ResponseEntity<ApiResponse<IssueResponse>> resolve(
+            @PathVariable Long id,
+            @Valid @RequestBody ResolveIssueRequest request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        IssueResponse res = issueService.resolveIssue(
+                id, request, userDetails.getUsername());
+        return ResponseEntity.ok(ApiResponse.success("Issue marked as resolved", res));
+    }
 
-        return ResponseEntity.ok(ApiResponse.success("Issue status updated", response));
+    // ✅ Reporter confirms the fix is done → CLOSED
+    @PutMapping("/{id}/confirm-resolution")
+    public ResponseEntity<ApiResponse<IssueResponse>> confirmResolution(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        IssueResponse res = issueService.confirmResolution(id, userDetails.getUsername());
+        return ResponseEntity.ok(ApiResponse.success("Issue closed. Thank you!", res));
+    }
+
+    // ✅ Reporter says not fixed → REOPENED
+    @PutMapping("/{id}/reopen")
+    public ResponseEntity<ApiResponse<IssueResponse>> reopen(
+            @PathVariable Long id,
+            @RequestBody(required = false) ReopenIssueRequest request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        IssueResponse res = issueService.reopenIssue(
+                id,
+                request != null ? request : new ReopenIssueRequest(),
+                userDetails.getUsername());
+        return ResponseEntity.ok(ApiResponse.success("Issue reopened", res));
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<ApiResponse<Void>> deleteIssue(@PathVariable Long id) {
+    public ResponseEntity<ApiResponse<Void>> delete(@PathVariable Long id) {
         issueService.deleteIssue(id);
-        return ResponseEntity.ok(ApiResponse.success("Issue deleted successfully", null));
+        return ResponseEntity.ok(ApiResponse.success("Issue deleted", null));
     }
 
     @PostMapping("/{id}/comments")
@@ -98,9 +124,9 @@ public class IssueController {
             @PathVariable Long id,
             @Valid @RequestBody CommentRequest request,
             @AuthenticationPrincipal UserDetails userDetails) {
-        CommentResponse response = issueService.addComment(
+        CommentResponse res = issueService.addComment(
                 id, request, userDetails.getUsername());
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.success("Comment added", response));
+                .body(ApiResponse.success("Comment added", res));
     }
 }

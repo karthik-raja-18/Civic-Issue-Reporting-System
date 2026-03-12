@@ -67,12 +67,14 @@ export default function Dashboard() {
             Welcome back, <span className="text-civic-400">{user?.name}</span>
           </p>
         </div>
-        <Link to="/issues/new" className="btn-primary flex-shrink-0">
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-          Report Issue
-        </Link>
+        {user?.role === 'USER' && (
+          <Link to="/issues/new" className="btn-primary flex-shrink-0">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Report Issue
+          </Link>
+        )}
       </div>
 
       {/* ── Stats Strip ── */}
