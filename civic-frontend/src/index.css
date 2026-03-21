@@ -3,90 +3,166 @@
 @tailwind utilities;
 
 @layer base {
-  *, *::before, *::after {
-    box-sizing: border-box;
+  :root {
+    /* Safe Area Insets for Notch/Home Indicator */
+    --sat: env(safe-area-inset-top);
+    --sar: env(safe-area-inset-right);
+    --sab: env(safe-area-inset-bottom);
+    --sal: env(safe-area-inset-left);
+
+    /* Brand Colors */
+    --brand-blue: #1b3a6b;
+    --brand-saffron: #f4811f;
+    --gov-success: #2e7d32;
+    --gov-warning: #D97706;
+    --gov-danger: #d32f2f;
+    --gov-info: #2980B9;
+    --gov-purple: #7C3AED;
   }
 
   html {
-    scroll-behavior: smooth;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    height: 100%;
+    overflow-x: hidden;
   }
 
   body {
-    @apply bg-ink-950 text-ink-100 font-sans antialiased;
-    min-height: 100vh;
+    @apply text-light-primary dark:text-dark-primary antialiased h-full;
+    font-family: 'DM Sans', 'Inter', sans-serif;
+    touch-action: manipulation;
   }
 
-  h1, h2, h3, h4 {
-    @apply font-display;
+  /* Allow text selection in inputs/textareas */
+  input, textarea, [contenteditable="true"] {
+    user-select: text;
+  }
+
+  /* Touch Device Specific Enhancements */
+  @media (hover: none) {
+    .hover-trigger { @apply hidden; }
+  }
+
+  @media (hover: hover) {
+    .hover-scale { @apply hover:scale-105 transition-transform; }
+  }
+
+  /* Ripple effect simulation for mobile */
+  .btn-active-feedback:active {
+    @apply scale-[0.97] opacity-90 transition-all duration-75;
+  }
+
+  * {
+    @apply border-light-border dark:border-dark-border;
+  }
+
+  body {
+    @apply bg-light-bg text-light-primary font-sans antialiased transition-colors duration-150;
+  }
+
+  .dark body {
+    @apply bg-dark-bg text-dark-primary;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display font-semibold;
   }
 }
 
 @layer components {
   /* ── Buttons ─────────────────────────────────────────── */
   .btn {
-    @apply inline-flex items-center gap-2 px-4 py-2.5 rounded-lg font-sans font-medium text-sm
-           transition-all duration-200 cursor-pointer select-none focus:outline-none
-           focus:ring-2 focus:ring-offset-2 focus:ring-offset-ink-950 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-2 px-4 font-sans font-semibold text-sm
+           transition-colors duration-100 cursor-pointer select-none focus-visible:outline-none
+           focus-visible:ring-2 focus-visible:ring-brand-blue dark:focus-visible:ring-blue-400
+           disabled:opacity-50 disabled:cursor-not-allowed rounded-btn h-[36px];
   }
+  
+  .btn-sm { @apply h-[32px] px-3; }
+  .btn-lg { @apply h-[44px] px-6 text-base; }
+
   .btn-primary {
-    @apply btn bg-civic-500 hover:bg-civic-400 text-white focus:ring-civic-500 active:bg-civic-600;
+    @apply bg-brand-saffron text-white hover:bg-[#db741c] active:bg-[#c26719];
   }
+
   .btn-secondary {
-    @apply btn bg-ink-800 hover:bg-ink-700 text-ink-100 border border-ink-700 hover:border-ink-600 focus:ring-ink-500;
+    @apply border border-light-border dark:border-dark-border bg-transparent hover:bg-black/[0.04] dark:hover:bg-white/[0.04] 
+           text-light-primary dark:text-dark-primary;
   }
+
   .btn-danger {
-    @apply btn bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-600/30 hover:border-red-500 focus:ring-red-500;
+    @apply bg-gov-danger text-white hover:bg-[#a93226] active:bg-[#922b21];
   }
+
   .btn-ghost {
-    @apply btn text-ink-300 hover:text-ink-100 hover:bg-ink-800;
+    @apply bg-transparent hover:bg-black/[0.05] dark:hover:bg-white/[0.05] text-light-secondary dark:text-dark-secondary;
   }
 
   /* ── Inputs ──────────────────────────────────────────── */
+  .input-label {
+    @apply block text-[13px] font-medium text-light-secondary dark:text-dark-secondary mb-1.5;
+  }
+
   .input {
-    @apply w-full px-4 py-2.5 rounded-lg bg-ink-900 border border-ink-700
-           text-ink-100 placeholder-ink-500 font-sans text-sm
-           focus:outline-none focus:ring-2 focus:ring-civic-500 focus:border-civic-500
+    @apply w-full h-[40px] px-3 rounded-btn bg-light-surface dark:bg-dark-bg border border-light-border dark:border-dark-border
+           text-light-primary dark:text-dark-primary placeholder-light-muted dark:placeholder-dark-muted font-sans text-[15px]
+           focus:outline-none focus:ring-2 focus:ring-brand-blue dark:focus:ring-[#4A90D9] focus:border-transparent
            transition-colors duration-200;
   }
+
   .input-error {
-    @apply border-red-500 focus:ring-red-500;
-  }
-  .label {
-    @apply block text-xs font-medium text-ink-400 mb-1.5 uppercase tracking-wider;
+    @apply border-gov-danger focus:ring-gov-danger;
   }
 
   /* ── Cards ───────────────────────────────────────────── */
   .card {
-    @apply bg-ink-900 border border-ink-800 rounded-xl p-5 transition-all duration-200;
-  }
-  .card-hover {
-    @apply card hover:border-ink-600 hover:bg-ink-800/60 cursor-pointer;
+    @apply bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border 
+           rounded-gov shadow-gov transition-colors duration-150 overflow-hidden;
   }
 
-  /* ── Badges ──────────────────────────────────────────── */
+  /* ── Badges/Pills ────────────────────────────────────── */
   .badge {
-    @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono font-medium tracking-wide uppercase;
+    @apply inline-flex items-center px-[10px] h-[22px] rounded-full text-[11px] font-mono font-medium tracking-wide uppercase;
   }
-  .badge-pending   { @apply badge bg-amber-500/15 text-amber-400 border border-amber-500/25; }
-  .badge-progress  { @apply badge bg-blue-500/15 text-blue-400 border border-blue-500/25; }
-  .badge-resolved  { @apply badge bg-civic-500/15 text-civic-400 border border-civic-500/25; }
-  .badge-admin     { @apply badge bg-purple-500/15 text-purple-400 border border-purple-500/25; }
-  .badge-user      { @apply badge bg-ink-600/40 text-ink-300 border border-ink-600/50; }
+  
+  /* Status pill generator utilities would go here, 
+     but we'll use Tailwind classes in the components for status colors */
 
-  /* ── Page shell ──────────────────────────────────────── */
-  .page-wrapper {
-    @apply animate-slide-up;
+  /* ── Layout ──────────────────────────────────────────── */
+  .container-civic {
+    @apply max-w-[1280px] mx-auto px-4 md:px-6;
   }
-  .page-title {
-    @apply text-2xl font-display font-bold text-white;
+
+  .sidebar-item {
+    @apply flex items-center gap-3 px-3 py-2 rounded-btn transition-colors duration-150 text-light-secondary dark:text-dark-secondary hover:bg-black/[0.04] dark:hover:bg-white/[0.04];
   }
-  .section-title {
-    @apply text-lg font-display font-semibold text-white;
+
+  .sidebar-item-active {
+    @apply bg-brand-blue/10 dark:bg-brand-blue/20 text-brand-blue dark:text-blue-400 font-semibold border-l-[3px] border-brand-blue -ml-[3px];
   }
 }
 
-/* Thin scrollbar */
-::-webkit-scrollbar { width: 5px; height: 5px; }
-::-webkit-scrollbar-track { background: #1c2330; }
-::-webkit-scrollbar-thumb { background: #364455; border-radius: 99px; }
-::-webkit-scrollbar-thumb:hover { background: #4b6278; }
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-light-bg dark:bg-dark-bg;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-light-border dark:bg-dark-border rounded-full hover:bg-light-muted dark:hover:bg-dark-muted;
+}
+
+/* Custom fade in animation */
+.animate-fade {
+  animation: fadeIn 150ms ease-out forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+

@@ -27,7 +27,7 @@ public class User {
     @Column(nullable = false, unique = true)
     private String email;
 
-    @Column(nullable = false)
+    @Column(nullable = true)
     private String password;
 
     @Enumerated(EnumType.STRING)
@@ -39,6 +39,16 @@ public class User {
     @Enumerated(EnumType.STRING)
     @Column(name = "zone")
     private Zone zone;
+
+    // ── OAuth 2.0 Integration ───────────────────────────────────────────
+    @Column(name = "oauth_provider")
+    private String oauthProvider;
+
+    @Column(name = "oauth_id")
+    private String oauthId;
+
+    @Column(name = "avatar_url")
+    private String avatarUrl;
 
     @OneToMany(mappedBy = "createdBy", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default

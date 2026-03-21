@@ -20,7 +20,10 @@ public class Issue {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
+    @Column(name = "resolved_at")
+    private LocalDateTime resolvedAt;
+    @Column(name = "closed_at")
+    private LocalDateTime closedAt;
     @Column(nullable = false)
     private String title;
 

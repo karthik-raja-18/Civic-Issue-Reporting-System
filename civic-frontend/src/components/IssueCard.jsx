@@ -1,95 +1,88 @@
 import { Link } from 'react-router-dom'
-import { timeAgo, STATUS_META } from '../utils/helpers'
+import { timeAgo } from '../utils/helpers'
 import StatusBadge from './StatusBadge'
 
 const ZONE_COLORS = {
-  NORTH:   'text-blue-400',
-  SOUTH:   'text-amber-400',
-  EAST:    'text-purple-400',
-  WEST:    'text-orange-400',
-  CENTRAL: 'text-civic-400',
+  NORTH:   'text-blue-500 bg-blue-500/5',
+  SOUTH:   'text-amber-500 bg-amber-500/5',
+  EAST:    'text-purple-500 bg-purple-500/5',
+  WEST:    'text-orange-500 bg-orange-500/5',
+  CENTRAL: 'text-brand-blue bg-brand-blue/5',
 }
 
 export default function IssueCard({ issue }) {
-  const meta = STATUS_META[issue.status] || {}
+  const isResolved = issue.status === 'RESOLVED'
 
   return (
     <Link
       to={`/issues/${issue.id}`}
-      className="card border-ink-700 hover:border-ink-600 transition-all
-                 hover:shadow-lg hover:-translate-y-0.5 group block"
+      className="group relative block bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border rounded-[2rem] overflow-hidden shadow-sm hover:shadow-xl hover:border-brand-blue/30 transition-all duration-500"
     >
-      {/* ✅ Evidence image thumbnail */}
-      {issue.imageUrl ? (
-        <div className="relative -mx-5 -mt-5 mb-4 rounded-t-xl overflow-hidden h-40">
-          <img
-            src={issue.imageUrl}
-            alt={issue.title}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-            onError={(e) => {
-              e.target.parentElement.className =
-                'relative -mx-5 -mt-5 mb-4 rounded-t-xl overflow-hidden h-40 ' +
-                'bg-ink-800 flex items-center justify-center'
-              e.target.replaceWith(
-                Object.assign(document.createElement('div'), {
-                  className: 'text-ink-600 text-xs',
-                  textContent: 'Image unavailable',
-                })
-              )
-            }}
-          />
-          {/* Category overlay on image */}
-          <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 to-transparent
-                          px-3 py-2">
-            <span className="text-xs text-white/80 font-medium">{issue.category}</span>
-          </div>
-        </div>
-      ) : (
-        /* No image — show category icon placeholder */
-        <div className="-mx-5 -mt-5 mb-4 rounded-t-xl overflow-hidden h-24
-                        bg-ink-800 flex items-center justify-center border-b border-ink-700">
-          <div className="flex flex-col items-center gap-1 text-ink-600">
-            <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24"
-                 stroke="currentColor" strokeWidth="1.5">
-              <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
-            </svg>
-            <span className="text-xs">{issue.category}</span>
-          </div>
+      {/* Verify Fix Banner */}
+      {isResolved && (
+        <div className="bg-brand-saffron/10 border-b border-brand-saffron/20 px-6 py-2 flex items-center justify-between">
+           <span className="text-[10px] font-black text-brand-saffron uppercase tracking-[0.2em]">
+              Verification Required
+           </span>
+           <div className="w-1.5 h-1.5 rounded-full bg-brand-saffron animate-pulse" />
         </div>
       )}
 
-      {/* Content */}
-      <div className="flex items-start justify-between gap-2 mb-2">
-        <h3 className="font-semibold text-ink-100 text-sm leading-snug
-                       line-clamp-2 group-hover:text-white transition-colors flex-1">
-          {issue.title}
-        </h3>
-        <StatusBadge status={issue.status} size="sm" />
+      <div className="p-4 sm:p-6 md:p-8">
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
+           <div className="space-y-3 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                 {issue.zone && (
+                   <span className={`px-2 py-0.5 rounded-full text-[8px] sm:text-[9px] font-black uppercase tracking-widest border border-current/10 ${ZONE_COLORS[issue.zone] || 'text-light-muted bg-light-bg'}`}>
+                     {issue.zone}
+                   </span>
+                 )}
+                 <span className="text-[8px] sm:text-[9px] font-black text-light-muted uppercase tracking-widest bg-light-bg dark:bg-dark-bg px-2 py-0.5 rounded-full border border-light-border dark:border-dark-border">
+                   {issue.category}
+                 </span>
+              </div>
+              <h3 className="text-lg sm:text-xl font-display font-black text-light-primary dark:text-dark-primary tracking-tight leading-tight group-hover:text-brand-blue transition-colors truncate">
+                {issue.title}
+              </h3>
+           </div>
+           <div className="self-start sm:self-auto">
+              <StatusBadge status={issue.status} />
+           </div>
+        </div>
+
+        <p className="text-[14px] font-medium text-light-secondary dark:text-dark-secondary leading-relaxed line-clamp-2 h-[44px] mb-8 opacity-80">
+          {issue.description}
+        </p>
+
+        {/* Footer Logistics */}
+        <div className="flex items-center justify-between pt-6 border-t border-light-border/40 dark:border-dark-border/40">
+           <div className="flex items-center gap-4 min-w-0">
+              {issue.imageUrl ? (
+                <div className="w-12 h-12 rounded-2xl overflow-hidden bg-light-bg dark:bg-dark-bg border border-light-border dark:border-dark-border flex-shrink-0 shadow-inner group-hover:scale-110 transition-transform">
+                   <img src={issue.imageUrl} alt="" className="w-full h-full object-cover" />
+                </div>
+              ) : (
+                <div className="w-12 h-12 rounded-2xl bg-light-bg dark:bg-dark-bg flex items-center justify-center text-light-muted/30 border border-light-border dark:border-dark-border flex-shrink-0">
+                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" /></svg>
+                </div>
+              )}
+              <div className="flex flex-col min-w-0">
+                 <span className="text-[11px] font-black text-light-muted uppercase tracking-[0.15em] mb-0.5">{timeAgo(issue.createdAt)}</span>
+                 <span className="text-[13px] font-bold text-light-primary dark:text-dark-primary truncate group-hover:text-brand-blue/70 transition-colors">
+                   {issue.assignedToName || 'Pending Assignment'}
+                 </span>
+              </div>
+           </div>
+
+           <div className="flex items-center gap-2 bg-light-bg dark:bg-dark-bg border border-light-border/60 dark:border-dark-border/60 px-3 py-1.5 rounded-xl shadow-sm">
+              <svg className="w-4 h-4 text-brand-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a.75.75 0 01-1.074-.765 1.65 1.65 0 00.33-1.583c-.39-.888-.66-1.825-.66-2.822 0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" /></svg>
+              <span className="text-[11px] font-black text-light-primary dark:text-dark-primary">{issue.comments?.length || 0}</span>
+           </div>
+        </div>
       </div>
 
-      <p className="text-ink-400 text-xs line-clamp-2 mb-3 leading-relaxed">
-        {issue.description}
-      </p>
-
-      {/* Footer */}
-      <div className="flex items-center justify-between text-xs text-ink-500 pt-2
-                      border-t border-ink-800">
-        <div className="flex items-center gap-3">
-          <span>{timeAgo(issue.createdAt)}</span>
-          {issue.zone && issue.zone !== 'UNASSIGNED' && (
-            <span className={`font-mono font-bold ${ZONE_COLORS[issue.zone] || 'text-ink-500'}`}>
-              {issue.zone}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-1.5">
-          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24"
-               stroke="currentColor" strokeWidth="2">
-            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
-          </svg>
-          {issue.comments?.length || 0}
-        </div>
-      </div>
+      {/* Hover Identification Line */}
+      <div className="absolute bottom-0 left-0 w-0 h-1 bg-brand-blue group-hover:w-full transition-all duration-700" />
     </Link>
   )
 }

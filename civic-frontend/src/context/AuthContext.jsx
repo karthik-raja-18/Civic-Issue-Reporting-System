@@ -77,6 +77,13 @@ export function AuthProvider({ children }) {
     clearAuth()
   }, [clearAuth])
 
+  const loginWithToken = useCallback((token, userData) => {
+    localStorage.setItem('token', token)
+    localStorage.setItem('user', JSON.stringify(userData))
+    setToken(token)
+    setUser(userData)
+  }, [])
+
   // ── Derived state ──────────────────────────────────────────────────────────
   const isAuthenticated = Boolean(token)
   const isAdmin = user?.role === 'ADMIN'
@@ -86,6 +93,7 @@ export function AuthProvider({ children }) {
       user, token, loading, error,
       isAuthenticated, isAdmin,
       register, login, logout,
+      loginWithToken,
       clearError: () => setError(null),
     }}>
       {children}

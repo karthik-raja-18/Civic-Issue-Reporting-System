@@ -14,6 +14,7 @@ import com.civic.issue.exception.IssueRejectionException;
 import com.civic.issue.exception.ResourceNotFoundException;
 import com.civic.issue.exception.UnauthorizedException;
 import com.civic.issue.repository.*;
+import com.civic.issue.service.AnalyticsSyncService;
 import com.civic.issue.service.CaptchaService;
 import com.civic.issue.service.CloudinaryService;
 import com.civic.issue.service.IssueService;
@@ -24,6 +25,7 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -37,8 +39,9 @@ public class IssueServiceImpl implements IssueService {
     private final CommentRepository      commentRepository;
     private final NotificationRepository notificationRepository;
     private final ZoneDetector           zoneDetector;
-    private final CaptchaService captchaService;
-    private final CloudinaryService cloudinaryService;
+    private final CaptchaService         captchaService;
+    private final CloudinaryService      cloudinaryService;
+    private final AnalyticsSyncService   analyticsSyncService;
 
     // ─────────────────────────────────────────────────────────────────────────
     // CREATE
@@ -66,7 +69,6 @@ public class IssueServiceImpl implements IssueService {
                 .description(request.getDescription())
                 .category(request.getCategory())
                 .imageUrl(request.getImageUrl())
-                .imagePublicId(request.getImagePublicId())
                 .latitude(request.getLatitude())
                 .longitude(request.getLongitude())
                 .createdBy(user)
@@ -79,6 +81,10 @@ public class IssueServiceImpl implements IssueService {
         }
 
         Issue saved = issueRepository.save(issue);
+        
+        // Real-time analytics sync for new complaint
+        analyticsSyncService.syncSingleIssue(saved);
+
         log.info("Issue #{} created → Zone: {} → Assigned: {}",
                 saved.getId(), detectedZone,
                 regionalAdmin.map(User::getEmail).orElse("UNASSIGNED"));
@@ -132,6 +138,9 @@ public class IssueServiceImpl implements IssueService {
         issue.setStatus(request.getStatus());
         Issue updated = issueRepository.save(issue);
 
+        // Real-time analytics sync for status update
+        analyticsSyncService.syncSingleIssue(updated);
+
         notify(issue.getCreatedBy(),
                 String.format("Your issue '%s' status updated to %s.",
                         issue.getTitle(), request.getStatus().name()));
@@ -160,12 +169,20 @@ public class IssueServiceImpl implements IssueService {
         issue.setResolvedImageUrl(request.getResolvedImageUrl());
         issue.setResolvedImagePublicId(request.getResolvedImagePublicId());
         issue.setReopenNote(null); // clear any previous reopen note
+        issue.setResolvedAt(LocalDateTime.now()); // ✅ set BEFORE save so it is persisted
         Issue updated = issueRepository.save(issue);
 
         // Notify reporter to verify the fix
         notify(issue.getCreatedBy(), String.format(
                 "🔧 Your issue '%s' has been resolved. Please check the proof photo and confirm.",
                 issue.getTitle()));
+
+        // ✅ Real-time analytics sync — fail silently if analytics server is down
+        try {
+            analyticsSyncService.syncSingleIssue(updated);
+        } catch (Exception ex) {
+            log.warn("[Analytics] Real-time sync failed for issue #{}: {}", id, ex.getMessage());
+        }
 
         log.info("Issue #{} RESOLVED by {} — proof: {}", id, userEmail, request.getResolvedImageUrl());
         return mapToResponse(updated);
@@ -192,6 +209,7 @@ public class IssueServiceImpl implements IssueService {
         }
 
         issue.setStatus(IssueStatus.CLOSED);
+        issue.setClosedAt(LocalDateTime.now());
         Issue updated = issueRepository.save(issue);
 
         // ✅ Storage Optimization: Delete the ORIGINAL evidence image after reporter is satisfied

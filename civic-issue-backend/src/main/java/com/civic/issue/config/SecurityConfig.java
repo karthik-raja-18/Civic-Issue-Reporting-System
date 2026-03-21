@@ -1,6 +1,10 @@
 package com.civic.issue.config;
 
 import com.civic.issue.filter.JwtAuthenticationFilter;
+import com.civic.issue.security.CustomOAuth2UserService;
+import com.civic.issue.security.OAuth2AuthenticationSuccessHandler;
+import com.civic.issue.security.OAuth2AuthenticationFailureHandler;
+import com.civic.issue.security.OAuth2ActionStoreFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -9,6 +13,7 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -29,8 +34,12 @@ import java.util.List;
 @RequiredArgsConstructor
 public class SecurityConfig {
 
-    private final CustomUserDetailsService userDetailsService;
-    private final JwtAuthenticationFilter  jwtAuthenticationFilter;
+    private final CustomUserDetailsService        userDetailsService;
+    private final JwtAuthenticationFilter          jwtAuthenticationFilter;
+    private final CustomOAuth2UserService         customOAuthUserInfoService;
+    private final OAuth2AuthenticationSuccessHandler oAuth2AuthenticationSuccessHandler;
+    private final OAuth2AuthenticationFailureHandler oAuth2AuthenticationFailureHandler;
+    private final OAuth2ActionStoreFilter          oAuth2ActionStoreFilter;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -61,7 +70,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
 
                         // ── Public endpoints ──────────────────────────────────────
-                        .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers("/api/auth/**", "/oauth2/**", "/login/oauth2/**").permitAll()
 
                         // ── Issue read — all authenticated users ──────────────────
                         .requestMatchers(HttpMethod.GET,
@@ -99,7 +108,14 @@ public class SecurityConfig {
                 )
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(jwtAuthenticationFilter,
-                        UsernamePasswordAuthenticationFilter.class);
+                        UsernamePasswordAuthenticationFilter.class)
+                .oauth2Login(oauth -> oauth
+                        .userInfoEndpoint(userInfo -> userInfo.userService(customOAuthUserInfoService))
+                        .successHandler(oAuth2AuthenticationSuccessHandler)
+                        .failureHandler(oAuth2AuthenticationFailureHandler)
+                )
+                .addFilterBefore(oAuth2ActionStoreFilter, 
+                        org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestRedirectFilter.class);
 
         return http.build();
     }

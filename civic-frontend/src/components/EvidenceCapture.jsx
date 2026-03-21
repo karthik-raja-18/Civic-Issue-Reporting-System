@@ -1,25 +1,25 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { issueApi } from '../api/issueApi'
 
-/**
- * EvidenceCapture — Forces user to take a LIVE photo.
- * Embeds GPS + timestamp watermark on captured image.
- *
- * Props:
- *   onCapture(payload)       — { file, timestamp, location }
- *   onLocationCapture(loc)   — { latitude, longitude, accuracy }
- */
-export default function EvidenceCapture({ onCapture, onLocationCapture }) {
+export default function EvidenceCapture({
+  onUpload,
+  onLocationCapture,
+  latitude: propLat,
+  longitude: propLng,
+}) {
   const videoRef   = useRef(null)
   const canvasRef  = useRef(null)
   const streamRef  = useRef(null)
 
-  const [phase,    setPhase]    = useState('idle')
-  // idle | locating | camera | captured | error
-  const [location, setLocation] = useState(null)
-  const [captured, setCaptured] = useState(null) // { previewUrl, file, timestamp }
-  const [error,    setError]    = useState(null)
+  const [phase,     setPhase]     = useState('idle')
+  const [location,  setLocation]  = useState(
+    propLat && propLng ? { latitude: propLat, longitude: propLng } : null
+  )
+  const [captured,  setCaptured]  = useState(null)
+  const [uploadedUrl, setUploadedUrl] = useState('')
+  const [error,     setError]     = useState(null)
+  const [uploadProgress, setUploadProgress] = useState(0)
 
-  // ── Stop stream helper ────────────────────────────────────────────
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach(t => t.stop())
     streamRef.current = null
@@ -27,58 +27,14 @@ export default function EvidenceCapture({ onCapture, onLocationCapture }) {
 
   useEffect(() => () => stopCamera(), [stopCamera])
 
-  // ── Step 1: Get GPS ───────────────────────────────────────────────
-  const requestLocation = useCallback(() => {
-    setPhase('locating')
-    setError(null)
-
-    if (!navigator.geolocation) {
-      // GPS not available — skip GPS, go straight to camera
-      startCamera()
-      return
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      ({ coords }) => {
-        const lat = coords.latitude
-        const lng = coords.longitude
-        
-        // Widened bounds for Coimbatore district
-        const withinDistrict = lat >= 10.00 && lat <= 11.60 &&
-                               lng >= 76.40 && lng <= 77.70
-
-        if (withinDistrict) {
-          const loc = {
-            latitude:  lat,
-            longitude: lng,
-            accuracy:  Math.round(coords.accuracy),
-          }
-          setLocation(loc)
-          onLocationCapture?.(loc)
-        } else {
-          console.warn('GPS location outside Coimbatore ignored')
-          setLocation(null)
-        }
-        startCamera()
-      },
-      () => {
-        // GPS denied — still allow camera, just no GPS data
-        setLocation(null)
-        startCamera()
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    )
-  }, [onLocationCapture])
-
-  // ── Step 2: Open rear camera ──────────────────────────────────────
   const startCamera = useCallback(async () => {
     setPhase('camera')
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: { ideal: 'environment' }, // rear cam on mobile
-          width:      { ideal: 1280 },
-          height:     { ideal: 720  },
+          facingMode: { ideal: 'environment' },
+          width:  { ideal: 1280 },
+          height: { ideal: 720  },
         },
         audio: false,
       })
@@ -87,81 +43,77 @@ export default function EvidenceCapture({ onCapture, onLocationCapture }) {
         videoRef.current.srcObject = stream
         await videoRef.current.play()
       }
-    } catch (err) {
-      setError('Camera access denied. Please allow camera access in your browser.')
+    } catch {
+      setError('Camera access denied. Please allow camera access in your browser settings.')
       setPhase('error')
     }
   }, [])
 
-  // ── Step 3: Capture photo + draw watermark ────────────────────────
-  const capturePhoto = useCallback(() => {
-  const video  = videoRef.current
-  const canvas = canvasRef.current
-  if (!video || !canvas) return
+  const requestLocation = useCallback(() => {
+    setPhase('locating')
+    setError(null)
 
-  const now = new Date()
+    if (propLat && propLng) {
+      const loc = { latitude: propLat, longitude: propLng, accuracy: 0 }
+      setLocation(loc)
+      onLocationCapture?.(loc)
+      startCamera()
+      return
+    }
 
-  // ✅ Fix 2 — Resize to max 800px wide (reduces 3MB → ~200KB)
-  const MAX_WIDTH = 800
-  const scale     = Math.min(1, MAX_WIDTH / (video.videoWidth || 1280))
-  canvas.width    = (video.videoWidth  || 1280) * scale
-  canvas.height   = (video.videoHeight || 720)  * scale
+    if (!navigator.geolocation) {
+      startCamera()
+      return
+    }
 
-  const ctx = canvas.getContext('2d')
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-  drawWatermark(ctx, canvas.width, canvas.height, now)
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        const lat = coords.latitude
+        const lng = coords.longitude
+        const withinDistrict = lat >= 10.00 && lat <= 11.60 &&
+                                lng >= 76.40 && lng <= 77.70
+        if (withinDistrict) {
+          const loc = { latitude: lat, longitude: lng, accuracy: Math.round(coords.accuracy) }
+          setLocation(loc)
+          onLocationCapture?.(loc)
+        }
+        startCamera()
+      },
+      () => {
+        setLocation(null)
+        startCamera()
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    )
+  }, [propLat, propLng, onLocationCapture, startCamera])
 
-  // ✅ Fix 2 — Quality 0.6 = good evidence quality, small file
-  canvas.toBlob((blob) => {
-    const file       = new File([blob], `evidence_${Date.now()}.jpg`, { type: 'image/jpeg' })
-    const previewUrl = URL.createObjectURL(blob)
-    const timestamp  = now.toISOString()
-
-    console.log(`📸 Photo size: ${(blob.size / 1024).toFixed(1)} KB`)
-
-    setCaptured({ file, previewUrl, timestamp })
-    onCapture?.({ file, timestamp, location })
-    stopCamera()
-    setPhase('captured')
-  }, 'image/jpeg', 0.6)  // ✅ 0.6 = compressed
-}, [location, onCapture, stopCamera])
-
-  // ── Watermark drawing ─────────────────────────────────────────────
   const drawWatermark = (ctx, w, h, now) => {
+    const loc = location || (propLat && propLng
+      ? { latitude: propLat, longitude: propLng }
+      : null)
+
     const dateStr = now.toLocaleString('en-IN', {
       year: 'numeric', month: 'short', day: '2-digit',
       hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true,
     })
-    const locStr = location
-      ? `${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}`
+    const locStr = loc
+      ? `${loc.latitude.toFixed(5)}, ${loc.longitude.toFixed(5)}`
       : 'GPS unavailable'
 
-    const lines = [
-      'CivicPulse — Live Evidence',
-      `Date: ${dateStr}`,
-      `GPS:  ${locStr}`,
-    ]
-
-    const barH   = 90
+    const lines    = ['CivicPulse — Live Evidence', `Date: ${dateStr}`, `GPS:  ${locStr}`]
+    const barH     = 90
     const fontSize = Math.max(13, Math.round(w / 85))
 
-    // Dark bar
     ctx.fillStyle = 'rgba(0,0,0,0.72)'
     ctx.fillRect(0, h - barH, w, barH)
-
-    // Green left border
     ctx.fillStyle = '#22c55e'
     ctx.fillRect(0, h - barH, 5, barH)
-
-    // Text
     ctx.font      = `bold ${fontSize}px monospace`
     ctx.fillStyle = '#ffffff'
     ctx.textAlign = 'left'
     lines.forEach((line, i) => {
       ctx.fillText(line, 14, h - barH + 24 + i * (fontSize + 6))
     })
-
-    // LIVE badge
     ctx.fillStyle = 'rgba(220,38,38,0.90)'
     ctx.fillRect(w - 140, 10, 130, 30)
     ctx.fillStyle = '#fff'
@@ -170,138 +122,193 @@ export default function EvidenceCapture({ onCapture, onLocationCapture }) {
     ctx.fillText('● LIVE EVIDENCE', w - 14, 30)
   }
 
-  // ── Retake ────────────────────────────────────────────────────────
+  const capturePhoto = useCallback(() => {
+    const video  = videoRef.current
+    const canvas = canvasRef.current
+    if (!video || !canvas) return
+
+    const now       = new Date()
+    const MAX_WIDTH = 800
+    const scale     = Math.min(1, MAX_WIDTH / (video.videoWidth || 1280))
+    canvas.width    = (video.videoWidth  || 1280) * scale
+    canvas.height   = (video.videoHeight || 720)  * scale
+
+    const ctx = canvas.getContext('2d')
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+    drawWatermark(ctx, canvas.width, canvas.height, now)
+
+    canvas.toBlob((blob) => {
+      const file       = new File([blob], `evidence_${Date.now()}.jpg`, { type: 'image/jpeg' })
+      const previewUrl = URL.createObjectURL(blob)
+      const timestamp  = now.toISOString()
+      setCaptured({ file, previewUrl, timestamp })
+      stopCamera()
+      setPhase('captured')
+    }, 'image/jpeg', 0.6)
+  }, [location, propLat, propLng, stopCamera])
+
+  const uploadToCloudinary = useCallback(async (file) => {
+      setPhase('uploading')
+      setUploadProgress(0)
+      setError(null)
+      try {
+        const loc = location || (propLat && propLng
+          ? { latitude: propLat, longitude: propLng }
+          : null)
+
+        setUploadProgress(30)
+        const url = await issueApi.uploadImageDirect(
+          file,
+          loc?.latitude,
+          loc?.longitude
+        )
+        setUploadProgress(100)
+        setUploadedUrl(url)
+        setPhase('done')
+        onUpload?.(url)
+
+      } catch (err) {
+        setError(err.message || 'Upload failed. Please try again.')
+        setPhase('captured')
+      }
+    }, [location, propLat, propLng, onUpload])
+
   const retake = () => {
     setCaptured(null)
+    setUploadedUrl('')
     setPhase('idle')
     setError(null)
+    onUpload?.('')
   }
 
-  // ── RENDER ────────────────────────────────────────────────────────
   return (
-    <div className="rounded-xl border border-ink-700 bg-ink-900 overflow-hidden">
-
-      {/* IDLE */}
-      {phase === 'idle' && (
-        <div className="flex flex-col items-center justify-center py-8 px-6 text-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-civic-500/15 border border-civic-500/30
-                          flex items-center justify-center">
-            <CamIcon className="w-7 h-7 text-civic-400" />
+    <div className="card shadow-md overflow-hidden bg-light-surface dark:bg-dark-surface">
+      
+      {/* Viewport Area */}
+      <div className="relative aspect-video bg-black flex items-center justify-center overflow-hidden">
+        
+        {/* IDLE / START UP */}
+        {phase === 'idle' && (
+          <div className="flex flex-col items-center gap-4 p-8 text-center animate-fade">
+             <div className="w-16 h-16 rounded-full bg-brand-blue/10 border border-brand-blue/20 flex items-center justify-center text-brand-blue">
+                <CamIcon className="w-8 h-8" />
+             </div>
+             <div className="space-y-1">
+                <h3 className="text-white text-lg font-display">Capture Evidence</h3>
+                <p className="text-white/60 text-sm max-w-xs mx-auto">
+                  Take a live photo of the issue. Location and timestamp will be auto-embedded.
+                </p>
+             </div>
+             <button onClick={requestLocation} className="btn btn-primary btn-lg mt-2">
+                <CamIcon className="w-5 h-5 mr-2" /> Start Camera
+             </button>
           </div>
-          <div>
-            <p className="font-semibold text-white text-sm">Take Live Evidence Photo</p>
-            <p className="text-ink-400 text-xs mt-1">
-              Required before submitting. GPS + timestamp will be embedded.
-            </p>
-          </div>
-          <ul className="text-xs text-ink-500 space-y-1 text-left w-full max-w-xs">
-            <li className="flex gap-1.5"><span className="text-civic-500">✓</span> No gallery uploads — must be live</li>
-            <li className="flex gap-1.5"><span className="text-civic-500">✓</span> GPS auto-fills location</li>
-            <li className="flex gap-1.5"><span className="text-civic-500">✓</span> Watermark added automatically</li>
-          </ul>
-          <button onClick={requestLocation} className="btn-primary gap-2">
-            <CamIcon className="w-4 h-4" /> Open Camera
-          </button>
-        </div>
-      )}
+        )}
 
-      {/* LOCATING */}
-      {phase === 'locating' && (
-        <div className="flex flex-col items-center justify-center py-10 gap-3">
-          <div className="w-8 h-8 rounded-full border-2 border-ink-700 border-t-civic-500 animate-spin" />
-          <p className="text-ink-300 text-sm">Getting your location…</p>
-          <p className="text-ink-500 text-xs">Allow location access when prompted</p>
-        </div>
-      )}
-
-      {/* LIVE CAMERA */}
-      {phase === 'camera' && (
-        <div className="relative bg-black">
-          <video
-            ref={videoRef}
-            className="w-full max-h-72 object-cover block"
-            autoPlay playsInline muted
-          />
-          {/* LIVE badge */}
-          <div className="absolute top-3 left-3 flex items-center gap-1.5 bg-red-600/90
-                          text-white text-xs font-bold px-2.5 py-1 rounded-full">
-            <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" /> LIVE
+        {/* LOCATING */}
+        {phase === 'locating' && (
+          <div className="flex flex-col items-center gap-4 animate-pulse">
+             <div className="w-12 h-12 border-4 border-brand-saffron/30 border-t-brand-saffron rounded-full animate-spin" />
+             <p className="text-white/80 font-mono text-sm uppercase tracking-widest">Pinpointing GPS...</p>
           </div>
-          {/* GPS overlay */}
-          {location && (
-            <div className="absolute top-3 right-3 bg-black/60 text-white
-                            text-xs px-2 py-1 rounded-lg font-mono">
-              📍 {location.latitude.toFixed(4)}, {location.longitude.toFixed(4)}
+        )}
+
+        {/* ACTIVE CAMERA */}
+        {phase === 'camera' && (
+          <>
+            <video ref={videoRef} className="w-full h-full object-cover" autoPlay playsInline muted />
+            <div className="absolute top-4 left-4 z-10 flex items-center gap-2 bg-gov-danger px-2.5 py-1 rounded text-white text-[11px] font-bold uppercase tracking-wider">
+               <span className="w-2 h-2 rounded-full bg-white animate-pulse" /> Live Viewfinder
             </div>
-          )}
-          {/* Capture button */}
-          <div className="absolute bottom-4 inset-x-0 flex justify-center">
-            <button
-              onClick={capturePhoto}
-              className="w-16 h-16 rounded-full bg-white border-4 border-civic-500
-                         shadow-xl hover:scale-105 active:scale-95 transition-transform"
-            >
-              <div className="w-full h-full rounded-full bg-white flex items-center justify-center">
-                <div className="w-10 h-10 rounded-full bg-civic-500" />
+            {location && (
+               <div className="absolute bottom-4 left-4 z-10 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded border border-white/20 text-white font-mono text-[11px]">
+                  📍 {location.latitude.toFixed(5)}, {location.longitude.toFixed(5)}
+               </div>
+            )}
+            <div className="absolute bottom-6 inset-x-0 z-20 flex justify-center">
+               <button 
+                  onClick={capturePhoto}
+                  className="w-16 h-16 rounded-full border-[3px] border-white p-1 hover:scale-105 active:scale-95 transition-transform"
+               >
+                  <div className="w-full h-full rounded-full bg-white flex items-center justify-center" />
+               </button>
+            </div>
+          </>
+        )}
+
+        {/* CAPTURED PREVIEW */}
+        {(phase === 'captured' || phase === 'uploading' || phase === 'done') && captured && (
+          <>
+            <img src={captured.previewUrl} alt="Preview" className="w-full h-full object-cover" />
+            
+            {phase === 'captured' && (
+              <div className="absolute top-4 left-4 z-10 bg-gov-warning px-2.5 py-1 rounded text-white text-[11px] font-bold uppercase tracking-wider flex items-center gap-2">
+                 📸 Preview Mode
               </div>
-            </button>
-          </div>
-        </div>
-      )}
+            )}
 
-      {/* Hidden canvas */}
-      <canvas ref={canvasRef} className="hidden" />
+            {phase === 'uploading' && (
+              <div className="absolute inset-0 z-30 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center gap-4">
+                 <div className="w-full max-w-[200px] h-1.5 bg-white/20 rounded-full overflow-hidden">
+                    <div className="h-full bg-brand-saffron transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
+                 </div>
+                 <p className="text-white font-mono text-xs uppercase tracking-widest">Uploading to secure server ({uploadProgress}%)</p>
+              </div>
+            )}
 
-      {/* CAPTURED — preview */}
-      {phase === 'captured' && captured && (
-        <div>
-          <div className="relative">
-            {/* ✅ The actual preview image — visible to user immediately */}
-            <img
-              src={captured.previewUrl}
-              alt="Captured evidence"
-              className="w-full max-h-72 object-cover block"
-            />
-            <div className="absolute top-3 left-3 flex items-center gap-1.5
-                            bg-civic-600/90 text-white text-xs font-bold
-                            px-2.5 py-1 rounded-full">
-              ✓ Photo Captured
-            </div>
-          </div>
-          <div className="p-3 flex items-center justify-between bg-ink-800/50">
-            <div className="text-xs text-ink-400 space-y-0.5">
-              <p>📅 {new Date(captured.timestamp).toLocaleString()}</p>
-              {location && (
-                <p>📍 {location.latitude.toFixed(5)}, {location.longitude.toFixed(5)}</p>
+            {phase === 'done' && (
+              <div className="absolute top-4 left-4 z-10 bg-gov-success px-2.5 py-1 rounded text-white text-[11px] font-bold uppercase tracking-wider flex items-center gap-2">
+                 ✓ Evidence Secured
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ERROR STATE */}
+        {phase === 'error' && (
+           <div className="flex flex-col items-center gap-4 p-8 text-center animate-fade">
+              <div className="w-16 h-16 rounded-full bg-gov-danger/10 flex items-center justify-center text-gov-danger">
+                 <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>
+              </div>
+              <p className="text-white text-sm max-w-xs">{error}</p>
+              <button onClick={() => setPhase('idle')} className="btn btn-secondary text-white border-white/30 hover:bg-white/10">Try Again</button>
+           </div>
+        )}
+      </div>
+
+      {/* Controls / Information Bar */}
+      {(phase === 'captured' || phase === 'done') && (
+        <div className="p-4 bg-light-surface dark:bg-dark-surface border-t border-light-border dark:border-dark-border flex items-center justify-between">
+           <div className="flex flex-col">
+              <span className="text-[11px] font-bold text-light-muted dark:text-dark-muted uppercase tracking-wider">Evidence Information</span>
+              <span className="text-[13px] font-medium text-light-primary dark:text-dark-primary mt-0.5">
+                 {new Date(captured.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })} • Secure Watermark Applied
+              </span>
+           </div>
+           
+           <div className="flex gap-2">
+              <button onClick={retake} className="btn btn-secondary btn-sm">Retake</button>
+              {phase === 'captured' && (
+                <button 
+                  onClick={() => uploadToCloudinary(captured.file)}
+                  className="btn btn-primary btn-sm"
+                >
+                  Confirm & Upload
+                </button>
               )}
-            </div>
-            <button onClick={retake} className="btn-ghost text-xs py-1 px-3">
-              Retake
-            </button>
-          </div>
+           </div>
         </div>
       )}
 
-      {/* ERROR */}
-      {phase === 'error' && (
-        <div className="p-6 text-center">
-          <p className="text-red-400 text-sm mb-3">{error}</p>
-          <button
-            onClick={() => { setPhase('idle'); setError(null) }}
-            className="btn-secondary text-xs"
-          >
-            Try Again
-          </button>
-        </div>
-      )}
+      {/* Hidden processing canvas */}
+      <canvas ref={canvasRef} className="hidden" />
     </div>
   )
 }
 
 const CamIcon = ({ className = 'w-5 h-5' }) => (
-  <svg className={className} fill="none" viewBox="0 0 24 24"
-       stroke="currentColor" strokeWidth="2">
-    <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
-    <circle cx="12" cy="13" r="4"/>
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
   </svg>
 )

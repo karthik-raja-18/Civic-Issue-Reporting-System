@@ -12,9 +12,10 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class AuthResponse {
     private String token;
+    @Builder.Default
     private String type = "Bearer";
     private Long userId;
     private String name;
     private String email;
-    private RoleType role;
+    private RoleType role;   // ✅ only this one — RoleType enum
 }

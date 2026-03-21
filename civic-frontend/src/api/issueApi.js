@@ -12,32 +12,34 @@ export const issueApi = {
   updateStatus: (id, status) =>
     api.put(`/api/issues/${id}/status`, { status }),
 
-  // ✅ Admin/Zone Admin: mark resolved + proof photo URL
-  resolve: (id, resolvedImageUrl, resolvedImagePublicId) =>
-    api.put(`/api/issues/${id}/resolve`, { resolvedImageUrl, resolvedImagePublicId }),
+  resolve: (id, resolvedImageUrl) =>
+    api.put(`/api/issues/${id}/resolve`, { resolvedImageUrl }),
 
-  // ✅ Reporter: confirm fix is done → CLOSED
   confirmResolution: (id) =>
     api.put(`/api/issues/${id}/confirm-resolution`),
 
-  // ✅ Reporter: not fixed yet → REOPENED with optional note
   reopen: (id, note = '') =>
     api.put(`/api/issues/${id}/reopen`, { note }),
 
+  // ✅ NEW — AI validation: image check + duplicate detection
+  // Called AFTER photo is uploaded to Cloudinary, BEFORE final submit
+  validateWithAi: (payload) =>
+    api.post('/api/issues/validate-ai', payload),
+  // payload: { imageUrl, title, description, category, latitude, longitude }
+
   // Upload image via Backend Proxy (handles Cloudinary securely)
-  uploadImageDirect: async (file, latitude, longitude, capturedAt) => {
+  uploadImageDirect: async (file, latitude, longitude) => {
     const formData = new FormData()
     formData.append('file', file)
     if (latitude)  formData.append('latitude',  latitude)
     if (longitude) formData.append('longitude', longitude)
-    if (capturedAt) formData.append('capturedAt', capturedAt)
+    formData.append('capturedAt', new Date().toISOString())
 
-    // Using the 'api' axios instance which handles Auth tokens automatically
     const res = await api.post('/api/issues/upload-image', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
     
-    // Backend returns ApiResponse<UploadResponse> -> data.data { imageUrl, publicId }
-    return res.data.data
+    // Backend returns ApiResponse<UploadResponse> -> res.data.data.imageUrl
+    return res.data.data.imageUrl
   },
 }

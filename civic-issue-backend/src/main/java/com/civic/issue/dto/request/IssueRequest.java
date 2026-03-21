@@ -2,16 +2,12 @@ package com.civic.issue.dto.request;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 @Data
 public class IssueRequest {
-    @NotBlank(message = "CAPTCHA verification is required")
-    private String captchaToken;
 
     @NotBlank(message = "Title is required")
-    @Size(max = 200, message = "Title must be under 200 characters")
     private String title;
 
     @NotBlank(message = "Description is required")
@@ -21,9 +17,19 @@ public class IssueRequest {
     private String category;
 
     private String imageUrl;
-    private String imagePublicId;
 
+    @NotNull(message = "Location is required")
     private Double latitude;
 
+    @NotNull(message = "Location is required")
     private Double longitude;
+
+    @NotBlank(message = "CAPTCHA verification is required")
+    private String captchaToken;
+
+    /**
+     * If true, skip duplicate check and allow submission.
+     * Set by frontend when reporter clicks "Submit Anyway" on duplicate warning.
+     */
+    private boolean skipDuplicateCheck = false;
 }

@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet'
 import L from 'leaflet'
+import Spinner from './Spinner'
 
 // Fix Leaflet default marker icons
 delete L.Icon.Default.prototype._getIconUrl
@@ -13,15 +14,14 @@ L.Icon.Default.mergeOptions({
 // ── Zone detector (mirrors backend logic) ─────────────────────────────────────
 function detectZone(lat, lng) {
   if (!lat || !lng) return null
-  // Outside Coimbatore district
   if (lat < 10.25 || lat > 11.35 || lng < 76.65 || lng > 77.45) {
-    return { zone: 'UNASSIGNED', color: 'text-ink-400', bg: 'bg-ink-800 border-ink-700', areas: 'Outside Coimbatore District' }
+    return { zone: 'UNASSIGNED', color: 'text-light-muted', bg: 'bg-light-bg dark:bg-dark-bg', border: 'border-light-border dark:border-dark-border', areas: 'Outside Coimbatore District' }
   }
-  if (lat > 11.05) return { zone: 'NORTH',   color: 'text-blue-400',   bg: 'bg-blue-500/10 border-blue-500/30',   areas: 'Mettupalayam, Annur, Karamadai, Thudiyalur' }
-  if (lat < 10.85) return { zone: 'SOUTH',   color: 'text-amber-400',  bg: 'bg-amber-500/10 border-amber-500/30',  areas: 'Pollachi, Valparai, Anaimalai, Kinathukadavu' }
-  if (lng > 77.10) return { zone: 'EAST',    color: 'text-purple-400', bg: 'bg-purple-500/10 border-purple-500/30', areas: 'Sulur, Palladam, Avinashi Road' }
-  if (lng < 76.95) return { zone: 'WEST',    color: 'text-orange-400', bg: 'bg-orange-500/10 border-orange-500/30', areas: 'Madukkarai, Thondamuthur' }
-  return               { zone: 'CENTRAL', color: 'text-civic-400',  bg: 'bg-civic-500/10 border-civic-500/30',  areas: 'Gandhipuram, RS Puram, Peelamedu, Singanallur' }
+  if (lat > 11.05) return { zone: 'NORTH',   color: 'text-blue-500',   bg: 'bg-blue-500/5',   border: 'border-blue-500/20',   areas: 'Mettupalayam, Annur, Karamadai' }
+  if (lat < 10.85) return { zone: 'SOUTH',   color: 'text-amber-500',   bg: 'bg-amber-500/5',   border: 'border-amber-500/20',   areas: 'Pollachi, Valparai, Anaimalai' }
+  if (lng > 77.10) return { zone: 'EAST',    color: 'text-purple-500',    bg: 'bg-purple-500/5',    border: 'border-purple-500/20',    areas: 'Sulur, Palladam, Avinashi' }
+  if (lng < 76.95) return { zone: 'WEST',    color: 'text-orange-500',    bg: 'bg-orange-500/5',    border: 'border-orange-500/20',    areas: 'Madukkarai, Thondamuthur' }
+  return               { zone: 'CENTRAL', color: 'text-brand-blue', bg: 'bg-brand-blue/5', border: 'border-brand-blue/20', areas: 'Gandhipuram, RS Puram, Peelamedu' }
 }
 
 // ── Internal: map click handler ───────────────────────────────────────────────
@@ -39,13 +39,15 @@ function MapPanner({ position }) {
   return null
 }
 
-/**
- * LocationPicker
- * Props:
- *   value      — { latitude, longitude } or null
- *   onSelect   — called with { latitude, longitude }
- */
-export default function LocationPicker({ value, onSelect }) {
+export default function LocationPicker({
+  value,
+  initialLocation,
+  onSelect,
+  onLocationSelect,
+}) {
+  const currentValue   = value || initialLocation || null
+  const handleSelect   = onSelect || onLocationSelect
+
   const defaultCenter  = [11.0168, 76.9558] // Coimbatore center
   const [query,         setQuery]        = useState('')
   const [results,       setResults]      = useState([])
@@ -54,15 +56,14 @@ export default function LocationPicker({ value, onSelect }) {
   const [searchError,   setSearchError]  = useState(null)
   const [panTarget,     setPanTarget]    = useState(null)
 
-  const markerPos = value?.latitude && value?.longitude
-    ? [value.latitude, value.longitude]
+  const markerPos = currentValue?.latitude && currentValue?.longitude
+    ? [currentValue.latitude, currentValue.longitude]
     : null
 
-  const zoneInfo = value?.latitude && value?.longitude
-    ? detectZone(value.latitude, value.longitude)
+  const zoneInfo = currentValue?.latitude && currentValue?.longitude
+    ? detectZone(currentValue.latitude, currentValue.longitude)
     : null
 
-  // ── Search by place name (Nominatim — free, no API key) ───────────────────
   const handleSearch = useCallback(async (e) => {
     e?.preventDefault()
     if (!query.trim()) return
@@ -78,42 +79,32 @@ export default function LocationPicker({ value, onSelect }) {
       })
       const data = await res.json()
       if (data.length === 0) {
-        setSearchError('No results found. Try a different name.')
+        setSearchError('Geographic record not found. Please refine search.')
       } else {
         setResults(data)
       }
     } catch {
-      setSearchError('Search failed. Check your internet connection.')
+      setSearchError('Network protocol error. External mapping service unreachable.')
     } finally {
       setSearching(false)
     }
   }, [query])
 
-  // ── Pick from search results ──────────────────────────────────────────────
   const handlePickResult = (result) => {
     const lat = parseFloat(result.lat)
     const lng = parseFloat(result.lon)
-    onSelect({ latitude: lat, longitude: lng })
+    handleSelect({ latitude: lat, longitude: lng })
     setPanTarget([lat, lng])
     setResults([])
     setQuery(result.display_name.split(',')[0])
   }
 
-  // ── Coimbatore Bounds (District level) ──────────────────────────────────
-  const COIMBATORE_BOUNDS = {
-    latMin: 10.00, latMax: 11.60, // Widened slightly
-    lngMin: 76.40, lngMax: 77.70  // Widened slightly
-  }
+  const isWithinDistrict = (lat, lng) =>
+    lat >= 10.00 && lat <= 11.60 && lng >= 76.40 && lng <= 77.70
 
-  const isWithinDistrict = (lat, lng) => {
-    return lat >= COIMBATORE_BOUNDS.latMin && lat <= COIMBATORE_BOUNDS.latMax &&
-           lng >= COIMBATORE_BOUNDS.lngMin && lng <= COIMBATORE_BOUNDS.lngMax
-  }
-
-  // ── Use current GPS location ──────────────────────────────────────────────
   const handleCurrentLocation = () => {
     if (!navigator.geolocation) {
-      setSearchError('Geolocation not supported on this device.')
+       setSearchError('Geolocation is not supported by this browser.')
       return
     }
     setLocating(true)
@@ -122,149 +113,186 @@ export default function LocationPicker({ value, onSelect }) {
       ({ coords }) => {
         const lat = coords.latitude
         const lng = coords.longitude
-
         if (!isWithinDistrict(lat, lng)) {
-          setSearchError(`Detected location (${lat.toFixed(4)}, ${lng.toFixed(4)}) is outside Coimbatore district. Please select it manually on the map.`)
+           setSearchError(`The detected location is outside the Coimbatore District.`)
           setLocating(false)
           return
         }
-
-        onSelect({ latitude: lat, longitude: lng })
+        handleSelect({ latitude: lat, longitude: lng })
         setPanTarget([lat, lng])
         setLocating(false)
       },
       () => {
-        setSearchError('Could not get your location. Please allow location access.')
+         setSearchError('Geolocation permission denied.')
         setLocating(false)
       },
       { enableHighAccuracy: true, timeout: 10000 }
     )
   }
 
-  return (
-    <div className="rounded-xl overflow-hidden border border-ink-700">
+  const { latitude, longitude } = currentValue || {}
 
-      {/* ── Search Bar ── */}
-      <div className="bg-ink-800 px-3 py-3 space-y-2">
-        <div className="flex gap-2">
+  return (
+    <div className="bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border rounded-[2.5rem] overflow-hidden shadow-sm">
+       {/* Location Search */}
+      <div className="p-6 lg:p-8 bg-light-bg/50 dark:bg-dark-bg/50 border-b border-light-border dark:border-dark-border">
+        <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-4">
           <div className="relative flex-1">
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-500"
-                 fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-            <input
+             <div className="absolute left-5 top-1/2 -translate-y-1/2 text-light-muted">
+                <SearchIcon />
+             </div>
+             <input
               type="text"
-              className="input pl-8 py-2 text-sm"
-              placeholder="Search area (e.g. Pollachi Bus Stand, Sulur...)"
+              className="w-full h-14 bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border rounded-2xl pl-12 pr-6 text-[14px] font-bold outline-none focus:ring-4 focus:ring-brand-blue/10 transition-all placeholder:font-medium placeholder:opacity-30"
+               placeholder="Search for a location..."
               value={query}
               onChange={e => { setQuery(e.target.value); setResults([]) }}
             />
           </div>
-          <button type="button" onClick={handleSearch} disabled={searching}
-            className="btn-secondary text-xs px-3 py-2 flex-shrink-0">
-            {searching
-              ? <span className="w-4 h-4 border-2 border-ink-600 border-t-civic-500 rounded-full animate-spin" />
-              : 'Search'}
-          </button>
-          <button type="button" onClick={handleCurrentLocation}
-            disabled={locating}
-            title="Use my current location"
-            className="btn-primary text-xs px-3 py-2 flex-shrink-0 gap-1.5">
-            {locating
-              ? <span className="w-4 h-4 border-2 border-civic-300 border-t-white rounded-full animate-spin" />
-              : <GpsIcon />}
-            <span className="hidden sm:inline">My Location</span>
-          </button>
-        </div>
+          <div className="flex gap-2.5">
+            <button type="submit" disabled={searching}             className="h-14 px-8 btn btn-primary flex items-center justify-center gap-2.5 text-[11px] font-black uppercase tracking-widest shadow-lg shadow-brand-blue/20"
+             title="Search"
+           >
+              {searching ? <Spinner size="sm" /> : <SearchIcon />}
+              <span>Search</span>
+            </button>
+            <button type="button"             onClick={handleCurrentLocation}
+             className="h-14 px-5 btn btn-secondary border-light-border dark:border-dark-border flex items-center justify-center gap-2.5 text-[11px] font-black uppercase tracking-widest hover:bg-black/5"
+             title="My Location"
+             disabled={locating}
+           >
+              {locating ? <Spinner size="sm" /> : <GpsIcon />}
+              <span className="hidden lg:inline">My Location</span>
+            </button>
+          </div>
+        </form>
 
-        {/* Search error */}
         {searchError && (
-          <p className="text-red-400 text-xs px-1">{searchError}</p>
+          <div className="mt-4 px-6 py-3 bg-gov-danger/5 border border-gov-danger/20 rounded-xl text-[11px] font-black text-gov-danger uppercase tracking-widest leading-loose">
+            <span className="mr-2">⚠ SYSTEM ALERT:</span> {searchError}
+          </div>
         )}
 
-        {/* Search results dropdown */}
         {results.length > 0 && (
-          <div className="bg-ink-900 border border-ink-700 rounded-lg overflow-hidden
-                          max-h-44 overflow-y-auto shadow-xl">
+          <div className="mt-4 bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border rounded-2xl overflow-hidden shadow-2xl relative z-[1000] animate-slide-down">
             {results.map((r, i) => (
               <button
                 key={i}
                 type="button"
                 onClick={() => handlePickResult(r)}
-                className="w-full text-left px-4 py-2.5 text-xs text-ink-200
-                           hover:bg-ink-700 transition-colors border-b border-ink-800
-                           last:border-0 flex items-start gap-2"
+                className="w-full text-left px-6 py-4 text-[13px] font-bold text-light-primary dark:text-dark-primary hover:bg-brand-blue/5 border-b border-light-border dark:border-dark-border last:border-0 flex items-start gap-4 transition-colors"
               >
-                <svg className="w-3.5 h-3.5 text-civic-400 flex-shrink-0 mt-0.5"
-                     fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/>
-                  <circle cx="12" cy="10" r="3"/>
-                </svg>
-                <span className="line-clamp-2">{r.display_name}</span>
+                <div className="text-brand-blue mt-0.5"><MapPinIcon /></div>
+                <span className="line-clamp-1 opacity-80">{r.display_name}</span>
               </button>
             ))}
           </div>
         )}
+      </div>
 
-        {/* Coordinates display */}
+      {/* Map Engine Interface */}
+      <div className="relative group">
+        <MapContainer
+          center={markerPos || defaultCenter}
+          zoom={markerPos ? 14 : 11}
+          style={{ height: '350px', width: '100%', zIndex: 1 }}
+          scrollWheelZoom={false}
+          className="grayscale-[0.1] hover:grayscale-0 transition-all duration-700 dark:invert-[0.9] dark:hue-rotate-180"
+        >
+          <TileLayer
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+          <ClickHandler onSelect={(loc) => {
+            handleSelect(loc)
+            setPanTarget([loc.latitude, loc.longitude])
+          }} />
+          {panTarget && <MapPanner position={panTarget} />}
+          {markerPos && <Marker position={markerPos} />}
+        </MapContainer>
+
         {markerPos && (
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-ink-500">📍 Pin set:</span>
-            <span className="font-mono text-civic-400">
-              {value.latitude.toFixed(5)}, {value.longitude.toFixed(5)}
-            </span>
+          <div className="p-8 lg:p-10 border-t border-light-border dark:border-dark-border">
+             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8">
+                <div className="flex-1 space-y-3">
+                   <h3 className="text-[11px] font-black text-light-primary dark:text-dark-primary uppercase tracking-[0.2em]">Selected Location</h3>
+                   <div className="space-y-4">
+                      <div>
+                         <p className="text-[10px] font-bold text-light-muted dark:text-dark-muted uppercase tracking-widest mb-1.5 opacity-60">Location Status</p>
+                         <div className="flex items-center gap-3 text-gov-success font-black text-[13px] tracking-tight">
+                            <span className="w-2 h-2 rounded-full bg-current animate-pulse" />
+                            Location Verified
+                         </div>
+                      </div>
+                      
+                      <div className="flex gap-8">
+                         <div>
+                            <p className="text-[10px] font-bold text-light-muted dark:text-dark-muted uppercase tracking-widest mb-1 opacity-60">Coordinates</p>
+                            <p className="text-[14px] font-mono font-bold text-light-primary dark:text-dark-primary">{latitude.toFixed(6)}, {longitude.toFixed(6)}</p>
+                         </div>
+                         <div>
+                            <p className="text-[10px] font-bold text-light-muted dark:text-dark-muted uppercase tracking-widest mb-1 opacity-60">Area / Zone</p>
+                            <p className={`text-[13px] font-black uppercase tracking-widest ${zoneInfo?.color || ''}`}>
+                               {zoneInfo?.zone || 'Unassigned'}
+                            </p>
+                         </div>
+                      </div>
+                   </div>
+                </div>
+
+                <div className="h-20 w-px bg-light-border dark:border-dark-border mx-2 hidden lg:block" />
+
+                <div className="flex-1">
+                   <p className="text-[10px] font-bold text-light-muted dark:text-dark-muted uppercase tracking-widest mb-2 opacity-60">Assigned Zone Details</p>
+                   <div className="p-4 bg-light-bg/50 dark:bg-dark-bg/50 rounded-2xl border border-light-border dark:border-dark-border">
+                      <p className="text-[13px] font-bold text-light-primary dark:text-dark-primary leading-snug">
+                         {zoneInfo?.areas || 'Determining regional jurisdiction...'}
+                      </p>
+                   </div>
+                </div>
+             </div>
+          </div>
+        )}
+
+        {!markerPos && (
+          <div className="flex flex-col items-center justify-center py-10 text-center gap-6">
+             <div className="w-16 h-16 rounded-3xl bg-light-bg dark:bg-dark-bg/50 border-2 border-dashed border-light-border dark:border-dark-border flex items-center justify-center opacity-40">
+                <svg className="w-8 h-8 text-light-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+             </div>
+             <div className="space-y-1">
+                <h4 className="text-lg font-black text-light-primary dark:text-dark-primary tracking-tight">Location Not Selected</h4>
+                <p className="text-[12px] font-bold text-light-muted uppercase tracking-widest opacity-60">Click on the map or use search to select the issue location.</p>
+             </div>
           </div>
         )}
       </div>
-
-      {/* ── Map ── */}
-      <MapContainer
-        center={markerPos || defaultCenter}
-        zoom={markerPos ? 14 : 11}
-        style={{ height: '260px', width: '100%' }}
-        scrollWheelZoom={false}
-      >
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
-        <ClickHandler onSelect={(loc) => {
-          onSelect(loc)
-          setPanTarget([loc.latitude, loc.longitude])
-        }} />
-        {panTarget && <MapPanner position={panTarget} />}
-        {markerPos && <Marker position={markerPos} />}
-      </MapContainer>
-
-      {/* ── Zone Detection Result ── */}
-      {zoneInfo && (
-        <div className={`px-4 py-3 border-t border-ink-700 text-xs ${zoneInfo.bg} border`}>
-          <div className="flex items-center gap-2">
-            <span className={`font-bold font-mono ${zoneInfo.color}`}>
-              {zoneInfo.zone} ZONE
-            </span>
-            <span className="text-ink-400">→</span>
-            <span className="text-ink-300">
-              This issue will be auto-assigned to the <strong>{zoneInfo.zone} Zone Admin</strong>
-            </span>
-          </div>
-          <p className="text-ink-500 mt-0.5">{zoneInfo.areas}</p>
-        </div>
-      )}
-
-      {/* Instruction if no pin yet */}
-      {!markerPos && (
-        <div className="bg-ink-800/40 px-4 py-2 text-xs text-ink-500 border-t border-ink-700 text-center">
-          Click on the map to drop a pin, search by area name, or use GPS
-        </div>
-      )}
     </div>
   )
 }
 
-const GpsIcon = () => (
-  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-    <circle cx="12" cy="12" r="3"/>
-    <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
-  </svg>
-)
+
+function SearchIcon({ className = "w-5 h-5" }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+    </svg>
+  )
+}
+
+function MapPinIcon({ className = "w-5 h-5" }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
+    </svg>
+  )
+}
+
+function GpsIcon({ className = "w-5 h-5" }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 21V3m9 9H3" />
+    </svg>
+  )
+}

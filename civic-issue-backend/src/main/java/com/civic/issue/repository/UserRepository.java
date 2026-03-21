@@ -21,4 +21,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     // ✅ NEW — find regional admin for a specific zone
     Optional<User> findByRoleAndZone(RoleType role, Zone zone);
+
+    // ── OAuth 2.0 Helpers ───────────────────────────────────────────
+    Optional<User> findByOauthProviderAndOauthId(String provider, String oauthId);
 }

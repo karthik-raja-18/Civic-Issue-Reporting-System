@@ -103,7 +103,7 @@ public class RegionalAdminController {
         }
 
         // Unassign issues from this admin
-        List<Issue> assignedIssues = issueRepository.findByAssignedTo(admin);
+        List<Issue> assignedIssues = issueRepository.findByAssignedToOrderByCreatedAtDesc(admin);
         assignedIssues.forEach(i -> i.setAssignedTo(null));
         issueRepository.saveAll(assignedIssues);
 

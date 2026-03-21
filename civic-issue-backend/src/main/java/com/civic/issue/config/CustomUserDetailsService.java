@@ -22,10 +22,16 @@ public class CustomUserDetailsService implements UserDetailsService {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + email));
 
+        // Fallback for password if null (common for OAuth-created accounts)
+        String password = user.getPassword() != null ? user.getPassword() : "[PASSWORD_DISABLED_OAUTH]";
+        
+        // Fallback for role if null (prevents NPE during security context buildup)
+        String roleName = (user.getRole() != null) ? user.getRole().name() : "USER";
+
         return new org.springframework.security.core.userdetails.User(
                 user.getEmail(),
-                user.getPassword(),
-                List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name()))
+                password,
+                List.of(new SimpleGrantedAuthority("ROLE_" + roleName))
         );
     }
 }

@@ -1,10 +1,8 @@
 package com.civic.issue.controller;
 
 import com.civic.issue.dto.request.*;
-import com.civic.issue.dto.response.ApiResponse;
-import com.civic.issue.dto.response.CommentResponse;
-import com.civic.issue.dto.response.IssueResponse;
-import com.civic.issue.dto.response.UploadResponse;
+import com.civic.issue.dto.response.*;
+import com.civic.issue.service.AiValidationService;
 import com.civic.issue.service.CloudinaryService;
 import com.civic.issue.service.IssueService;
 import jakarta.validation.Valid;
@@ -25,8 +23,11 @@ import java.util.List;
 @RequiredArgsConstructor
 public class IssueController {
 
-    private final IssueService      issueService;
-    private final CloudinaryService cloudinaryService;
+    private final IssueService          issueService;
+    private final CloudinaryService     cloudinaryService;
+    private final AiValidationService   aiValidationService;
+
+    // ── READ ──────────────────────────────────────────────────────────────────
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<IssueResponse>>> getAllIssues(
@@ -43,14 +44,28 @@ public class IssueController {
         return ResponseEntity.ok(ApiResponse.success(issueService.getIssueById(id)));
     }
 
+    // ── CREATE ────────────────────────────────────────────────────────────────
+
     @PostMapping
     public ResponseEntity<ApiResponse<IssueResponse>> create(
             @Valid @RequestBody IssueRequest request,
             @AuthenticationPrincipal UserDetails userDetails) {
         IssueResponse res = issueService.createIssue(request, userDetails.getUsername());
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.success("Issue created", res));
+                .body(ApiResponse.success("Issue submitted successfully", res));
     }
+
+    // ✅ NEW — AI validation endpoint (called before final submit)
+    @PostMapping("/validate-ai")
+    public ResponseEntity<ApiResponse<AiValidationResponse>> validateWithAi(
+            @Valid @RequestBody AiValidateRequest request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+
+        AiValidationResponse result = aiValidationService.validate(request);
+        return ResponseEntity.ok(ApiResponse.success(result));
+    }
+
+    // ── IMAGE UPLOAD ──────────────────────────────────────────────────────────
 
     @PostMapping("/upload-image")
     public ResponseEntity<ApiResponse<UploadResponse>> uploadImage(
@@ -65,52 +80,48 @@ public class IssueController {
                 .body(ApiResponse.success("Image uploaded", res));
     }
 
-    // Generic status update — PENDING → IN_PROGRESS only
-    // (RESOLVED is blocked here — use /resolve endpoint instead)
+    // ── STATUS UPDATE ─────────────────────────────────────────────────────────
+
     @PutMapping("/{id}/status")
     @PreAuthorize("hasAnyRole('ADMIN','REGIONAL_ADMIN')")
     public ResponseEntity<ApiResponse<IssueResponse>> updateStatus(
             @PathVariable Long id,
             @Valid @RequestBody UpdateStatusRequest request,
             @AuthenticationPrincipal UserDetails userDetails) {
-        IssueResponse res = issueService.updateIssueStatus(
-                id, request, userDetails.getUsername());
-        return ResponseEntity.ok(ApiResponse.success("Status updated", res));
+        return ResponseEntity.ok(ApiResponse.success("Status updated",
+                issueService.updateIssueStatus(id, request, userDetails.getUsername())));
     }
 
-    // ✅ Admin/Zone Admin marks resolved + uploads proof photo
     @PutMapping("/{id}/resolve")
     @PreAuthorize("hasAnyRole('ADMIN','REGIONAL_ADMIN')")
     public ResponseEntity<ApiResponse<IssueResponse>> resolve(
             @PathVariable Long id,
             @Valid @RequestBody ResolveIssueRequest request,
             @AuthenticationPrincipal UserDetails userDetails) {
-        IssueResponse res = issueService.resolveIssue(
-                id, request, userDetails.getUsername());
-        return ResponseEntity.ok(ApiResponse.success("Issue marked as resolved", res));
+        return ResponseEntity.ok(ApiResponse.success("Issue marked as resolved",
+                issueService.resolveIssue(id, request, userDetails.getUsername())));
     }
 
-    // ✅ Reporter confirms the fix is done → CLOSED
     @PutMapping("/{id}/confirm-resolution")
     public ResponseEntity<ApiResponse<IssueResponse>> confirmResolution(
             @PathVariable Long id,
             @AuthenticationPrincipal UserDetails userDetails) {
-        IssueResponse res = issueService.confirmResolution(id, userDetails.getUsername());
-        return ResponseEntity.ok(ApiResponse.success("Issue closed. Thank you!", res));
+        return ResponseEntity.ok(ApiResponse.success("Issue closed. Thank you!",
+                issueService.confirmResolution(id, userDetails.getUsername())));
     }
 
-    // ✅ Reporter says not fixed → REOPENED
     @PutMapping("/{id}/reopen")
     public ResponseEntity<ApiResponse<IssueResponse>> reopen(
             @PathVariable Long id,
             @RequestBody(required = false) ReopenIssueRequest request,
             @AuthenticationPrincipal UserDetails userDetails) {
-        IssueResponse res = issueService.reopenIssue(
-                id,
-                request != null ? request : new ReopenIssueRequest(),
-                userDetails.getUsername());
-        return ResponseEntity.ok(ApiResponse.success("Issue reopened", res));
+        return ResponseEntity.ok(ApiResponse.success("Issue reopened",
+                issueService.reopenIssue(id,
+                        request != null ? request : new ReopenIssueRequest(),
+                        userDetails.getUsername())));
     }
+
+    // ── DELETE ────────────────────────────────────────────────────────────────
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
@@ -119,14 +130,14 @@ public class IssueController {
         return ResponseEntity.ok(ApiResponse.success("Issue deleted", null));
     }
 
+    // ── COMMENTS ─────────────────────────────────────────────────────────────
+
     @PostMapping("/{id}/comments")
     public ResponseEntity<ApiResponse<CommentResponse>> addComment(
             @PathVariable Long id,
             @Valid @RequestBody CommentRequest request,
             @AuthenticationPrincipal UserDetails userDetails) {
-        CommentResponse res = issueService.addComment(
-                id, request, userDetails.getUsername());
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.success("Comment added", res));
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success("Comment added",
+                issueService.addComment(id, request, userDetails.getUsername())));
     }
 }

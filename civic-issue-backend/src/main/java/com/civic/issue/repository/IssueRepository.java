@@ -4,8 +4,11 @@ import com.civic.issue.entity.Issue;
 import com.civic.issue.entity.User;
 import com.civic.issue.enums.Zone;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Repository
@@ -15,15 +18,30 @@ public interface IssueRepository extends JpaRepository<Issue, Long> {
 
     List<Issue> findByCreatedByOrderByCreatedAtDesc(User user);
 
-    // ✅ NEW — find issues by zone (for regional admin)
     List<Issue> findByZoneOrderByCreatedAtDesc(Zone zone);
 
-    // ✅ NEW — find issues assigned to a specific admin
-    List<Issue> findByAssignedTo(User admin);
+    List<Issue> findByAssignedToOrderByCreatedAtDesc(User user);
 
-    // ✅ NEW — find unassigned issues (no regional admin)
     List<Issue> findByAssignedToIsNull();
 
-    // ✅ NEW — count issues by user
-    long countByCreatedBy(User user);
+    @Query("SELECT COUNT(i) FROM Issue i WHERE i.assignedTo = :user AND i.status NOT IN ('CLOSED')")
+    long countActiveByAssignedTo(@Param("user") User user);
+
+    @Query("""
+        SELECT i FROM Issue i
+        WHERE i.category = :category
+          AND i.latitude  BETWEEN :latMin AND :latMax
+          AND i.longitude BETWEEN :lngMin AND :lngMax
+          AND i.createdAt >= :since
+          AND i.status <> 'CLOSED'
+        ORDER BY i.createdAt DESC
+        """)
+    List<Issue> findCandidateDuplicates(
+            @Param("category")  String category,
+            @Param("latMin")    Double latMin,
+            @Param("latMax")    Double latMax,
+            @Param("lngMin")    Double lngMin,
+            @Param("lngMax")    Double lngMax,
+            @Param("since")     LocalDateTime since
+    );
 }
