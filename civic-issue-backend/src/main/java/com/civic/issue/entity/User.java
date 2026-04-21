@@ -3,18 +3,9 @@ package com.civic.issue.entity;
 import com.civic.issue.enums.RoleType;
 import com.civic.issue.enums.Zone;
 import jakarta.persistence.*;
-import lombok.*;
-
-import java.util.ArrayList;
-import java.util.List;
 
 @Entity
 @Table(name = "users")
-@Getter
-@Setter
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
 public class User {
 
     @Id
@@ -27,20 +18,17 @@ public class User {
     @Column(nullable = false, unique = true)
     private String email;
 
-    @Column(nullable = true)
+    @Column
     private String password;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    @Builder.Default
+    @Column(nullable = false, length = 20)
     private RoleType role = RoleType.USER;
 
-    // ✅ NEW — Which Coimbatore zone this admin manages (null for regular USERs)
     @Enumerated(EnumType.STRING)
-    @Column(name = "zone")
+    @Column(length = 20)
     private Zone zone;
 
-    // ── OAuth 2.0 Integration ───────────────────────────────────────────
     @Column(name = "oauth_provider")
     private String oauthProvider;
 
@@ -50,11 +38,52 @@ public class User {
     @Column(name = "avatar_url")
     private String avatarUrl;
 
-    @OneToMany(mappedBy = "createdBy", cascade = CascadeType.ALL, orphanRemoval = true)
-    @Builder.Default
-    private List<Issue> issues = new ArrayList<>();
+    @Column(name = "phone", length = 20)
+    private String phone;
 
-    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
-    @Builder.Default
-    private List<Notification> notifications = new ArrayList<>();
+    public User() {}
+
+    // Getters & Setters
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
+    public String getEmail() { return email; }
+    public void setEmail(String email) { this.email = email; }
+    public String getPassword() { return password; }
+    public void setPassword(String password) { this.password = password; }
+    public RoleType getRole() { return role; }
+    public void setRole(RoleType role) { this.role = role; }
+    public Zone getZone() { return zone; }
+    public void setZone(Zone zone) { this.zone = zone; }
+    public String getOauthProvider() { return oauthProvider; }
+    public void setOauthProvider(String oauthProvider) { this.oauthProvider = oauthProvider; }
+    public String getOauthId() { return oauthId; }
+    public void setOauthId(String oauthId) { this.oauthId = oauthId; }
+    public String getAvatarUrl() { return avatarUrl; }
+    public void setAvatarUrl(String avatarUrl) { this.avatarUrl = avatarUrl; }
+    public String getPhone() { return phone; }
+    public void setPhone(String phone) { this.phone = phone; }
+
+    // Manual Builder
+    public static UserBuilder builder() {
+        return new UserBuilder();
+    }
+
+    public static class UserBuilder {
+        private User user = new User();
+        
+        public UserBuilder id(Long id) { user.id = id; return this; }
+        public UserBuilder name(String n) { user.name = n; return this; }
+        public UserBuilder email(String e) { user.email = e; return this; }
+        public UserBuilder phone(String p) { user.phone = p; return this; }
+        public UserBuilder password(String p) { user.password = p; return this; }
+        public UserBuilder role(RoleType r) { user.role = r; return this; }
+        public UserBuilder zone(Zone z) { user.zone = z; return this; }
+        public UserBuilder oauthProvider(String op) { user.oauthProvider = op; return this; }
+        public UserBuilder oauthId(String oi) { user.oauthId = oi; return this; }
+        public UserBuilder avatarUrl(String au) { user.avatarUrl = au; return this; }
+        
+        public User build() { return user; }
+    }
 }

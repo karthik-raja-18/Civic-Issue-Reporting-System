@@ -16,12 +16,13 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     boolean existsByEmail(String email);
 
-    // ✅ NEW — find all users with a specific role
     List<User> findByRole(RoleType role);
 
-    // ✅ NEW — find regional admin for a specific zone
     Optional<User> findByRoleAndZone(RoleType role, Zone zone);
 
-    // ── OAuth 2.0 Helpers ───────────────────────────────────────────
-    Optional<User> findByOauthProviderAndOauthId(String provider, String oauthId);
+    // ── OAuth (from fix8b) ──────────────────────────────────────────────────
+    Optional<User> findByOauthProviderAndOauthId(String oauthProvider, String oauthId);
+
+    // ── WhatsApp/SMS (fix9) ─────────────────────────────────────────────────
+    Optional<User> findByPhone(String phone);
 }

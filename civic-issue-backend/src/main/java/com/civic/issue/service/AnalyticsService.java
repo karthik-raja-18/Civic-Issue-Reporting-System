@@ -8,7 +8,6 @@ import com.civic.issue.enums.RoleType;
 import com.civic.issue.enums.Zone;
 import com.civic.issue.repository.IssueRepository;
 import com.civic.issue.repository.UserRepository;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -18,11 +17,15 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
-@RequiredArgsConstructor
 public class AnalyticsService {
 
     private final IssueRepository issueRepository;
     private final UserRepository userRepository;
+
+    public AnalyticsService(IssueRepository issueRepository, UserRepository userRepository) {
+        this.issueRepository = issueRepository;
+        this.userRepository = userRepository;
+    }
 
     public AnalyticsResponse getAdminAnalytics() {
         List<Issue> issues = issueRepository.findAll();
@@ -43,31 +46,35 @@ public class AnalyticsService {
         long closed      = issues.stream().filter(i -> i.getStatus() == IssueStatus.CLOSED).count();
         long open        = total - closed;
         long thisMonth   = issues.stream().filter(i -> i.getCreatedAt() != null && i.getCreatedAt().isAfter(firstDayOfMonth)).count();
+        
+        // SLA Breach: Either currently open and >3 days old, OR resolved/closed after >3 days
         long slaBreaches = issues.stream()
-                .filter(i -> i.getStatus() != IssueStatus.CLOSED)
-                .filter(i -> i.getCreatedAt() != null && Duration.between(i.getCreatedAt(), now).toDays() > 7)
+                .filter(i -> {
+                    if (i.getCreatedAt() == null) return false;
+                    LocalDateTime completionTime = (i.getResolvedAt() != null) ? i.getResolvedAt() : (i.getClosedAt() != null ? i.getClosedAt() : now);
+                    return Duration.between(i.getCreatedAt(), completionTime).toDays() >= 3;
+                })
                 .count();
 
-        // Avg Resolution Days (only for CLOSED issues)
+        // Avg Resolution Days (for both RESOLVED and CLOSED issues)
         double avgDays = issues.stream()
-                .filter(i -> (i.getStatus() == IssueStatus.CLOSED || i.getStatus() == IssueStatus.RESOLVED) && i.getClosedAt() != null && i.getCreatedAt() != null)
-                .mapToLong(i -> Duration.between(i.getCreatedAt(), i.getClosedAt() != null ? i.getClosedAt() : (i.getResolvedAt() != null ? i.getResolvedAt() : now)).toDays())
+                .filter(i -> (i.getStatus() == IssueStatus.CLOSED || i.getStatus() == IssueStatus.RESOLVED) && i.getCreatedAt() != null)
+                .mapToLong(i -> {
+                    LocalDateTime end = i.getResolvedAt() != null ? i.getResolvedAt() : (i.getClosedAt() != null ? i.getClosedAt() : now);
+                    return Duration.between(i.getCreatedAt(), end).toDays();
+                })
                 .average()
                 .orElse(0.0);
 
-        return AnalyticsResponse.builder()
-                .totalIssues(total)
-                .openIssues(open)
-                .closedIssues(closed)
-                .avgResolutionDays(Math.round(avgDays * 10.0) / 10.0)
-                .slaBreaches(slaBreaches)
-                .issuesThisMonth(thisMonth)
-                .dailyTrends(computeDailyTrends(issues))
-                .statusBreakdown(computeStatusBreakdown(issues))
-                .zoneStats(computeZoneStats(issues))
-                .topCategories(computeTopCategories(issues))
-                .monthlyTrends(computeMonthlyTrends(issues))
-                .build();
+        return new AnalyticsResponse(
+                total, open, closed, Math.round(avgDays * 10.0) / 10.0,
+                slaBreaches, thisMonth,
+                computeDailyTrends(issues),
+                computeStatusBreakdown(issues),
+                computeZoneStats(issues),
+                computeTopCategories(issues),
+                computeMonthlyTrends(issues)
+        );
     }
 
     private List<AnalyticsResponse.DailyTrend> computeDailyTrends(List<Issue> issues) {
@@ -121,14 +128,17 @@ public class AnalyticsService {
             long closed = zoneIssues.stream().filter(i -> i.getStatus() == IssueStatus.CLOSED).count();
             long open = total - closed;
             long breaches = zoneIssues.stream()
-                    .filter(i -> i.getStatus() != IssueStatus.CLOSED)
-                    .filter(i -> i.getCreatedAt() != null && Duration.between(i.getCreatedAt(), now).toDays() > 7)
+                    .filter(i -> {
+                        if (i.getCreatedAt() == null) return false;
+                        LocalDateTime completionTime = (i.getResolvedAt() != null) ? i.getResolvedAt() : (i.getClosedAt() != null ? i.getClosedAt() : now);
+                        return Duration.between(i.getCreatedAt(), completionTime).toDays() >= 3;
+                    })
                     .count();
             
             double avg = zoneIssues.stream()
                     .filter(i -> (i.getStatus() == IssueStatus.CLOSED || i.getStatus() == IssueStatus.RESOLVED) && i.getCreatedAt() != null)
                     .mapToLong(i -> {
-                        LocalDateTime end = i.getClosedAt() != null ? i.getClosedAt() : (i.getResolvedAt() != null ? i.getResolvedAt() : now);
+                        LocalDateTime end = i.getResolvedAt() != null ? i.getResolvedAt() : (i.getClosedAt() != null ? i.getClosedAt() : now);
                         return Duration.between(i.getCreatedAt(), end).toDays();
                     })
                     .average().orElse(0.0);

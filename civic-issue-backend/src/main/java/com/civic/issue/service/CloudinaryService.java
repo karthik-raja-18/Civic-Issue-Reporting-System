@@ -1,114 +1,99 @@
 package com.civic.issue.service;
 
+import com.civic.issue.dto.response.UploadResponse;
 import com.cloudinary.Cloudinary;
 import com.cloudinary.utils.ObjectUtils;
-import com.civic.issue.dto.response.UploadResponse;
-import com.civic.issue.exception.IssueRejectionException;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.util.List;
+import java.util.Base64;
 import java.util.Map;
 
-@Slf4j
 @Service
-@RequiredArgsConstructor
 public class CloudinaryService {
 
+    private static final Logger log = LoggerFactory.getLogger(CloudinaryService.class);
+
     private final Cloudinary cloudinary;
+    
+    @Value("${twilio.account.sid}")
+    private String twilioSid;
 
-    private static final List<String> ALLOWED_TYPES = List.of(
-            "image/jpeg", "image/jpg", "image/png",
-            "image/webp", "image/gif", "image/heic", "image/heif"
-    );
+    @Value("${twilio.auth.token}")
+    private String twilioToken;
 
-    public UploadResponse uploadEvidenceImage(
-            MultipartFile file,
-            String capturedAt,
-            Double latitude,
-            Double longitude,
-            String uploadedBy) throws IOException {
+    public CloudinaryService(
+            @Value("${cloudinary.cloud-name}") String cloudName,
+            @Value("${cloudinary.api-key}") String apiKey,
+            @Value("${cloudinary.api-secret}") String apiSecret) {
+        this.cloudinary = new Cloudinary(ObjectUtils.asMap(
+                "cloud_name", cloudName,
+                "api_key", apiKey,
+                "api_secret", apiSecret
+        ));
+    }
 
-        // Validate file
-        if (file == null || file.isEmpty()) {
-            throw new IssueRejectionException("Image file is required.");
-        }
+    /**
+     * Specialized method for the Web UI (MultipartFile upload).
+     */
+    public UploadResponse uploadEvidenceImage(MultipartFile file, String capturedAt, Double lat, Double lng, String email) throws IOException {
+        log.info("Uploading evidence image from user: {}", email);
+        Map<?, ?> uploadResult = cloudinary.uploader().upload(file.getBytes(), ObjectUtils.emptyMap());
+        
+        return UploadResponse.builder()
+                .imageUrl((String) uploadResult.get("secure_url"))
+                .publicId((String) uploadResult.get("public_id"))
+                .build();
+    }
 
-        String contentType = file.getContentType();
-        log.info("Upload | user={} | type={} | size={}KB",
-                uploadedBy, contentType, file.getSize() / 1024);
-
-        if (contentType != null && !contentType.startsWith("image/")) {
-            throw new IssueRejectionException(
-                    "Only image files accepted. Got: " + contentType);
-        }
-
-        if (file.getSize() > 10L * 1024 * 1024) {
-            throw new IssueRejectionException("Image must be under 10 MB.");
-        }
-
-        // Validate coordinates (optional)
-        if (latitude != null && (latitude < -90 || latitude > 90)) {
-            throw new IssueRejectionException("Invalid latitude.");
-        }
-        if (longitude != null && (longitude < -180 || longitude > 180)) {
-            throw new IssueRejectionException("Invalid longitude.");
-        }
-
-        // NO time validation — capturedAt is metadata only
-
-        String context = String.format("user=%s|lat=%s|lng=%s",
-                uploadedBy != null  ? uploadedBy          : "unknown",
-                latitude   != null  ? latitude.toString() : "unknown",
-                longitude  != null  ? longitude.toString(): "unknown");
-
+    /**
+     * Uploads an image from a URL (Bot Workflow). 
+     * If it's a Twilio URL, it downloads it first to avoid 401 Unauthorized.
+     */
+    public String uploadImage(String imageUrl) {
         try {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> result = (Map<String, Object>)
-                    cloudinary.uploader().upload(
-                            file.getBytes(),
-                            ObjectUtils.asMap(
-                                    "folder",        "civicpulse/evidence",
-                                    "context",       context,
-                                    "resource_type", "image",
-                                    "type",          "upload",
-                                    "access_mode",   "public"
-                            )
-                    );
+            Object uploadSource = imageUrl;
 
-            String secureUrl = (String) result.get("secure_url");
-            String publicId  = (String) result.get("public_id");
-
-            if (secureUrl == null || secureUrl.isBlank()) {
-                throw new IOException("Cloudinary returned empty URL. Check credentials.");
+            if (imageUrl.contains("twilio.com")) {
+                log.info("Downloading protected media from Twilio...");
+                byte[] imageBytes = downloadTwilioMedia(imageUrl);
+                uploadSource = imageBytes;
             }
 
-            log.info("✅ Uploaded | url={}", secureUrl);
-
-            return UploadResponse.builder()
-                    .imageUrl(secureUrl)
-                    .publicId(publicId)
-                    .build();
-
-        } catch (IssueRejectionException | IOException e) {
-            throw e;
+            Map<?, ?> uploadResult = cloudinary.uploader().upload(uploadSource, ObjectUtils.emptyMap());
+            String secureUrl = (String) uploadResult.get("secure_url");
+            log.info("Cloudinary upload success: {}", secureUrl);
+            return secureUrl;
         } catch (Exception e) {
-            log.error("❌ Cloudinary Upload Failed! Reason: {}", e.getMessage());
-            log.error("Trace:", e);
-            throw new IOException("Upload failed: " + e.getMessage(), e);
+            log.error("Cloudinary upload failed: {}", e.getMessage());
+            throw new RuntimeException("Image upload failed: " + e.getMessage());
         }
     }
 
-    public void deleteImage(String publicId) {
-        if (publicId == null || publicId.isBlank()) return;
-        try {
-            cloudinary.uploader().destroy(publicId, ObjectUtils.emptyMap());
-            log.info("🗑️ Deleted from Cloudinary: {}", publicId);
-        } catch (Exception e) {
-            log.warn("⚠️ Failed to delete image {}: {}", publicId, e.getMessage());
+    private byte[] downloadTwilioMedia(String url) {
+        RestTemplate restTemplate = new RestTemplate();
+        HttpHeaders headers = new HttpHeaders();
+        
+        String auth = twilioSid + ":" + twilioToken;
+        String encodedAuth = Base64.getEncoder().encodeToString(auth.getBytes());
+        headers.add("Authorization", "Basic " + encodedAuth);
+
+        HttpEntity<String> entity = new HttpEntity<>(headers);
+        ResponseEntity<byte[]> response = restTemplate.exchange(url, HttpMethod.GET, entity, byte[].class);
+
+        if (response.getStatusCode().is2xxSuccessful()) {
+            return response.getBody();
+        } else {
+            throw new RuntimeException("Failed to download Twilio media. Status: " + response.getStatusCode());
         }
     }
 }

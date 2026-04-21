@@ -1,0 +1,61 @@
+# ── CRS Master Gitignore ──────────────────────────────────────────────────────
+# This file protects the root of the repository.
+# Individual .gitignore files in sub-folders still apply.
+
+# Environment Secrets
+.env
+.env.local
+.env.debug
+config/*.env
+
+# Standard Node.js
+**/node_modules/
+**/npm-debug.log*
+**/yarn-debug.log*
+**/pnpm-debug.log*
+**/dist/
+**/build/
+**/.vite/
+
+# Standard Java / Maven
+**/target/
+**/*.class
+**/*.jar
+**/*.war
+**/*.nar
+**/*.ear
+**/*.zip
+**/*.tar.gz
+**/*.rar
+**/compile_output*.txt
+
+# IDE / Editors
+**/.vscode/
+**/.idea/
+**/*.iws
+**/*.iml
+**/*.ipr
+**/out/
+**/.sts4-cache/
+**/.apt_generated/
+**/.settings/
+**/.factorypath
+**/.springBeans
+
+# OS Assets
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Private keys / Certificates
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/*.jks
+
+# ─────────────────────────────────────────────────────────────────────────────

@@ -5,7 +5,6 @@ import com.civic.issue.entity.User;
 import com.civic.issue.repository.NotificationRepository;
 import com.civic.issue.repository.UserRepository;
 import com.civic.issue.service.NotificationService;
-import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,11 +12,15 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 
 @Service
-@RequiredArgsConstructor
 public class NotificationServiceImpl implements NotificationService {
 
     private final NotificationRepository notificationRepository;
     private final UserRepository userRepository;
+
+    public NotificationServiceImpl(NotificationRepository notificationRepository, UserRepository userRepository) {
+        this.notificationRepository = notificationRepository;
+        this.userRepository = userRepository;
+    }
 
     @Override
     @Transactional(readOnly = true)

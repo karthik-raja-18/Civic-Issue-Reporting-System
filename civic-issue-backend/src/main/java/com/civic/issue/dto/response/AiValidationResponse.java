@@ -1,44 +1,48 @@
 package com.civic.issue.dto.response;
 
-import lombok.*;
-
-/**
- * Returned from POST /api/issues/validate-ai
- * Frontend uses this to show AI validation feedback before final submit.
- */
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
 public class AiValidationResponse {
 
-    /** Whether the image passes AI validation */
     private boolean valid;
-
-    /** Human-readable reason shown to the reporter if invalid */
     private String message;
-
-    /** Category Gemini thinks best matches the photo */
     private String suggestedCategory;
-
-    /** Whether photo matches the description */
-    private String descriptionMatch;   // YES | NO | PARTIAL
-
-    /** 0–100 — 0 means AI was skipped (fallback) */
+    private String descriptionMatch;
     private int aiConfidence;
-
-    /** If the AI service was bypassed (timeout/error/unavail) */
     private boolean isFallback;
-
-    /** If a nearby duplicate was found */
     private boolean duplicateFound;
-
-    /** ID of the existing duplicate issue (so frontend can link to it) */
     private Long duplicateIssueId;
-
-    /** Title of the duplicate issue */
     private String duplicateIssueTitle;
-
-    /** Distance in metres to the duplicate */
     private Double duplicateDistanceMetres;
+
+    public AiValidationResponse() {}
+
+    public static AiValidationResponseBuilder builder() {
+        return new AiValidationResponseBuilder();
+    }
+
+    public static class AiValidationResponseBuilder {
+        private AiValidationResponse res = new AiValidationResponse();
+        public AiValidationResponseBuilder valid(boolean v) { res.valid = v; return this; }
+        public AiValidationResponseBuilder message(String m) { res.message = m; return this; }
+        public AiValidationResponseBuilder suggestedCategory(String s) { res.suggestedCategory = s; return this; }
+        public AiValidationResponseBuilder descriptionMatch(String d) { res.descriptionMatch = d; return this; }
+        public AiValidationResponseBuilder aiConfidence(int c) { res.aiConfidence = c; return this; }
+        public AiValidationResponseBuilder isFallback(boolean f) { res.isFallback = f; return this; }
+        public AiValidationResponseBuilder duplicateFound(boolean f) { res.duplicateFound = f; return this; }
+        public AiValidationResponseBuilder duplicateIssueId(Long id) { res.duplicateIssueId = id; return this; }
+        public AiValidationResponseBuilder duplicateIssueTitle(String t) { res.duplicateIssueTitle = t; return this; }
+        public AiValidationResponseBuilder duplicateDistanceMetres(Double d) { res.duplicateDistanceMetres = d; return this; }
+        public AiValidationResponse build() { return res; }
+    }
+
+    // Manual Getters
+    public boolean isValid() { return valid; }
+    public String getMessage() { return message; }
+    public String getSuggestedCategory() { return suggestedCategory; }
+    public String getDescriptionMatch() { return descriptionMatch; }
+    public int getAiConfidence() { return aiConfidence; }
+    public boolean isFallback() { return isFallback; }
+    public boolean isDuplicateFound() { return duplicateFound; }
+    public Long getDuplicateIssueId() { return duplicateIssueId; }
+    public String getDuplicateIssueTitle() { return duplicateIssueTitle; }
+    public Double getDuplicateDistanceMetres() { return duplicateDistanceMetres; }
 }

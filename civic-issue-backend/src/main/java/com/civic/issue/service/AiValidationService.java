@@ -3,51 +3,42 @@ package com.civic.issue.service;
 import com.civic.issue.dto.request.AiValidateRequest;
 import com.civic.issue.dto.response.AiValidationResponse;
 import com.civic.issue.entity.Issue;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
 
 /**
  * Orchestrates both AI image validation (Gemini) and duplicate detection.
- * Called from the new /api/issues/validate-ai endpoint.
  */
-@Slf4j
 @Service
-@RequiredArgsConstructor
 public class AiValidationService {
+
+    private static final Logger log = LoggerFactory.getLogger(AiValidationService.class);
 
     private final GeminiService            geminiService;
     private final DuplicateDetectionService duplicateDetectionService;
 
+    public AiValidationService(GeminiService geminiService, DuplicateDetectionService duplicateDetectionService) {
+        this.geminiService = geminiService;
+        this.duplicateDetectionService = duplicateDetectionService;
+    }
+
     public AiValidationResponse validate(AiValidateRequest request) {
 
-        // ── Step 1: Gemini image + description validation ─────────────────────
+        // Now passing only 1 argument as per new GeminiService signature
         GeminiService.GeminiValidationResult aiResult = geminiService.validateIssuePhoto(
-                request.getImageUrl(),
-                request.getTitle(),
-                request.getDescription(),
-                request.getCategory()
+                request.getImageUrl()
         );
 
-        log.info("AI validation result for '{}': valid={}, confidence={}, reason={}",
-                request.getTitle(), aiResult.isValidImage(),
-                aiResult.getConfidence(), aiResult.getRejectionReason());
+        log.info("AI validation mapping for '{}': suggestedCategory={}", 
+                request.getTitle(), aiResult.getSuggestedCategory());
 
-        // If AI says image is invalid OR it completely doesn't match the selected category
-        if (!aiResult.isValidImage() || !aiResult.isMatchesCategory()) {
-            String reason = buildRejectionMessage(aiResult.getRejectionReason());
-            
-            // If category mismatch was the reason, refine the message
-            if (aiResult.isValidImage() && !aiResult.isMatchesCategory()) {
-                reason = String.format("❌ Category Mismatch: The photo appears to show '%s', but you selected '%s'. Please choose the correct category.",
-                        aiResult.getSuggestedCategory(), request.getCategory());
-            }
-
+        if (!aiResult.isValidImage() || !aiResult.matchesCategory()) {
             return AiValidationResponse.builder()
                     .valid(false)
-                    .message(reason)
+                    .message("❌ AI rejected the image: " + aiResult.getRejectionReason())
                     .suggestedCategory(aiResult.getSuggestedCategory())
                     .descriptionMatch(aiResult.getMatchesDescription())
                     .aiConfidence(aiResult.getConfidence())
@@ -56,19 +47,11 @@ public class AiValidationService {
                     .build();
         }
 
-        // ── Step 2: Formulate message based on results ───────────────────────
-        String message;
+        String message = "✅ Photo verified. " + aiResult.getGeneratedDescription();
         if (aiResult.isFallback()) {
-            message = "⚠️ AI verification is currently undergoing maintenance. Your report is being accepted for manual district review.";
-        } else if (aiResult.isDescriptionMismatch()) {
-            message = "⚠️ Photo verified but your description doesn't seem to match the visual evidence. Please ensure your details are accurate.";
-        } else if ("PARTIAL".equals(aiResult.getMatchesDescription())) {
-            message = "✅ Photo verified. Consider refining your description for faster processing.";
-        } else {
-            message = "✅ Photo verified. Your issue has been successfully validated by AI.";
+            message = "⚠️ AI maintenance. Report accepted for review.";
         }
 
-        // ── Step 3: Duplicate detection ───────────────────────────────────────
         Optional<Issue> duplicate = duplicateDetectionService.findNearbyDuplicate(
                 request.getLatitude(),
                 request.getLongitude(),
@@ -82,11 +65,8 @@ public class AiValidationService {
                     dup.getLatitude(), dup.getLongitude()
             );
 
-            log.info("Duplicate found: Issue #{} '{}' at {:.0f}m away",
-                    dup.getId(), dup.getTitle(), distance);
-
             return AiValidationResponse.builder()
-                    .valid(true)  // Image is valid — but warn about duplicate
+                    .valid(true)
                     .message(message)
                     .suggestedCategory(aiResult.getSuggestedCategory())
                     .descriptionMatch(aiResult.getMatchesDescription())
@@ -99,7 +79,6 @@ public class AiValidationService {
                     .build();
         }
 
-        // ── All good ──────────────────────────────────────────────────────────
         return AiValidationResponse.builder()
                 .valid(true)
                 .message(message)
@@ -109,13 +88,5 @@ public class AiValidationService {
                 .isFallback(aiResult.isFallback())
                 .duplicateFound(false)
                 .build();
-    }
-
-    private String buildRejectionMessage(String reason) {
-        if (reason == null || "NONE".equals(reason)) {
-            return "❌ The photo doesn't appear to show a valid civic issue. Please take a clear photo of the actual problem.";
-        }
-        return "❌ Photo rejected: " + reason +
-               " Please take a clear photo showing the actual civic issue.";
     }
 }

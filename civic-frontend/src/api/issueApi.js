@@ -12,8 +12,8 @@ export const issueApi = {
   updateStatus: (id, status) =>
     api.put(`/api/issues/${id}/status`, { status }),
 
-  resolve: (id, resolvedImageUrl) =>
-    api.put(`/api/issues/${id}/resolve`, { resolvedImageUrl }),
+  resolve: (id, resolvedImageUrl, resolvedImagePublicId) =>
+    api.put(`/api/issues/${id}/resolve`, { resolvedImageUrl, resolvedImagePublicId }),
 
   confirmResolution: (id) =>
     api.put(`/api/issues/${id}/confirm-resolution`),
@@ -39,7 +39,18 @@ export const issueApi = {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
     
-    // Backend returns ApiResponse<UploadResponse> -> res.data.data.imageUrl
-    return res.data.data.imageUrl
+    // Backend returns ApiResponse<UploadResponse> 
+    // Return the whole object so we have both imageUrl and publicId
+    return res.data.data
   },
+  
+  
+  // Toggle upvote on an issue
+  // Pass current GPS coordinates for proximity check
+  upvote: (id, latitude, longitude) =>
+    api.post(`/api/issues/${id}/upvote`, { latitude, longitude }),
+
+  // Check if current user has upvoted
+  getUpvoteStatus: (id) =>
+    api.get(`/api/issues/${id}/upvote`),
 }

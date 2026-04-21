@@ -9,7 +9,6 @@ import com.civic.issue.exception.DuplicateResourceException;
 import com.civic.issue.repository.UserRepository;
 import com.civic.issue.service.AuthService;
 import com.civic.issue.util.JwtUtil;
-import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -19,7 +18,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
 
     private final UserRepository userRepository;
@@ -27,6 +25,18 @@ public class AuthServiceImpl implements AuthService {
     private final AuthenticationManager authenticationManager;
     private final UserDetailsService userDetailsService;
     private final JwtUtil jwtUtil;
+
+    public AuthServiceImpl(UserRepository userRepository, 
+                           PasswordEncoder passwordEncoder, 
+                           AuthenticationManager authenticationManager, 
+                           UserDetailsService userDetailsService, 
+                           JwtUtil jwtUtil) {
+        this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.authenticationManager = authenticationManager;
+        this.userDetailsService = userDetailsService;
+        this.jwtUtil = jwtUtil;
+    }
 
     @Override
     @Transactional

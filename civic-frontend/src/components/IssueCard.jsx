@@ -1,88 +1,159 @@
 import { Link } from 'react-router-dom'
-import { timeAgo } from '../utils/helpers'
+import { useTranslation } from 'react-i18next'
+import { useAuth } from '../context/AuthContext'
 import StatusBadge from './StatusBadge'
+import UpvoteButton from './UpvoteButton'
+import { timeAgo } from '../utils/helpers'
 
 const ZONE_COLORS = {
-  NORTH:   'text-blue-500 bg-blue-500/5',
-  SOUTH:   'text-amber-500 bg-amber-500/5',
-  EAST:    'text-purple-500 bg-purple-500/5',
-  WEST:    'text-orange-500 bg-orange-500/5',
-  CENTRAL: 'text-brand-blue bg-brand-blue/5',
+  NORTH:   'text-blue-500   bg-blue-500/10   border-blue-500/30',
+  SOUTH:   'text-amber-500  bg-amber-500/10  border-amber-500/30',
+  EAST:    'text-purple-500 bg-purple-500/10 border-purple-500/30',
+  WEST:    'text-orange-500 bg-orange-500/10 border-orange-500/30',
+  CENTRAL: 'text-teal-500   bg-teal-500/10   border-teal-500/30',
 }
 
-export default function IssueCard({ issue }) {
-  const isResolved = issue.status === 'RESOLVED'
+export default function IssueCard({ issue, showUpvote = true }) {
+  const { t }    = useTranslation()
+  const { user } = useAuth()
+
+  const isOwnIssue  = issue.createdBy?.email === user?.email
+  const isAdminView = user?.role === 'ADMIN' || user?.role === 'REGIONAL_ADMIN'
+  const zoneClass   = ZONE_COLORS[issue.zone] || 'text-[#8B949E] bg-transparent border-[#30363D]'
+
+  // Priority badge logic
+  const priority = issue.priorityScore || 0
+  const priorityBadge =
+    priority >= 80 ? { label: 'CRITICAL',  bg: 'bg-red-500/10    text-red-500    border-red-500/30' }
+  : priority >= 60 ? { label: 'HIGH',      bg: 'bg-orange-500/10 text-orange-500 border-orange-500/30' }
+  : priority >= 40 ? { label: 'MEDIUM',    bg: 'bg-amber-500/10  text-amber-500  border-amber-500/30' }
+  :                  null
 
   return (
-    <Link
-      to={`/issues/${issue.id}`}
-      className="group relative block bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border rounded-[2rem] overflow-hidden shadow-sm hover:shadow-xl hover:border-brand-blue/30 transition-all duration-500"
-    >
-      {/* Verify Fix Banner */}
-      {isResolved && (
-        <div className="bg-brand-saffron/10 border-b border-brand-saffron/20 px-6 py-2 flex items-center justify-between">
-           <span className="text-[10px] font-black text-brand-saffron uppercase tracking-[0.2em]">
-              Verification Required
-           </span>
-           <div className="w-1.5 h-1.5 rounded-full bg-brand-saffron animate-pulse" />
-        </div>
+    <div className="bg-white dark:bg-[#161B22]
+                    border border-[#D0D7DE] dark:border-[#30363D]
+                    rounded-lg overflow-hidden
+                    hover:border-[#1B3A6B]/40 dark:hover:border-[#4A90D9]/40
+                    transition-colors duration-150 group">
+
+      {/* Priority accent bar — only if high priority */}
+      {priorityBadge && (
+        <div className={`h-0.5 w-full ${
+          priority >= 80 ? 'bg-red-500' :
+          priority >= 60 ? 'bg-orange-500' : 'bg-amber-500'
+        }`} />
       )}
 
-      <div className="p-4 sm:p-6 md:p-8">
-        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
-           <div className="space-y-3 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                 {issue.zone && (
-                   <span className={`px-2 py-0.5 rounded-full text-[8px] sm:text-[9px] font-black uppercase tracking-widest border border-current/10 ${ZONE_COLORS[issue.zone] || 'text-light-muted bg-light-bg'}`}>
-                     {issue.zone}
-                   </span>
-                 )}
-                 <span className="text-[8px] sm:text-[9px] font-black text-light-muted uppercase tracking-widest bg-light-bg dark:bg-dark-bg px-2 py-0.5 rounded-full border border-light-border dark:border-dark-border">
-                   {issue.category}
-                 </span>
-              </div>
-              <h3 className="text-lg sm:text-xl font-display font-black text-light-primary dark:text-dark-primary tracking-tight leading-tight group-hover:text-brand-blue transition-colors truncate">
-                {issue.title}
-              </h3>
-           </div>
-           <div className="self-start sm:self-auto">
-              <StatusBadge status={issue.status} />
-           </div>
+      <div className="p-5">
+        {/* Top row — badges */}
+        <div className="flex items-center flex-wrap gap-2 mb-3">
+          {/* Status */}
+          <StatusBadge status={issue.status} />
+
+          {/* Zone */}
+          {issue.zone && issue.zone !== 'UNASSIGNED' && (
+            <span className={`text-[10px] font-mono font-bold px-2 py-0.5
+                             rounded border ${zoneClass}`}>
+              {t(`zones.${issue.zone}`, issue.zone)}
+            </span>
+          )}
+
+          {/* Category */}
+          <span className="text-[10px] font-medium px-2 py-0.5 rounded
+                           bg-[#F5F7FA] dark:bg-[#0D1117]
+                           border border-[#D0D7DE] dark:border-[#30363D]
+                           text-[#57606A] dark:text-[#8B949E]">
+            {t(`categories.${issue.category}`, issue.category)}
+          </span>
+
+          {/* Priority badge */}
+          {priorityBadge && (
+            <span className={`text-[10px] font-mono font-bold px-2 py-0.5
+                             rounded border ${priorityBadge.bg}`}>
+              {priorityBadge.label}
+            </span>
+          )}
+
+          {/* Resolve prompt */}
+          {issue.status === 'RESOLVED' && isOwnIssue && (
+            <span className="text-[10px] font-semibold px-2 py-0.5 rounded
+                             bg-[#F4811F]/10 border border-[#F4811F]/30 text-[#F4811F]
+                             animate-pulse">
+              ⚡ Verify Fix
+            </span>
+          )}
         </div>
 
-        <p className="text-[14px] font-medium text-light-secondary dark:text-dark-secondary leading-relaxed line-clamp-2 h-[44px] mb-8 opacity-80">
+        {/* Title */}
+        <Link to={`/issues/${issue.id}`}
+          className="block font-display font-bold text-[#1C2526] dark:text-[#E6EDF3]
+                     text-base leading-snug mb-1.5
+                     group-hover:text-[#1B3A6B] dark:group-hover:text-[#4A90D9]
+                     transition-colors">
+          {issue.title}
+        </Link>
+
+        {/* Description */}
+        <p className="text-[#57606A] dark:text-[#8B949E] text-sm
+                      line-clamp-2 leading-relaxed mb-4">
           {issue.description}
         </p>
 
-        {/* Footer Logistics */}
-        <div className="flex items-center justify-between pt-6 border-t border-light-border/40 dark:border-dark-border/40">
-           <div className="flex items-center gap-4 min-w-0">
-              {issue.imageUrl ? (
-                <div className="w-12 h-12 rounded-2xl overflow-hidden bg-light-bg dark:bg-dark-bg border border-light-border dark:border-dark-border flex-shrink-0 shadow-inner group-hover:scale-110 transition-transform">
-                   <img src={issue.imageUrl} alt="" className="w-full h-full object-cover" />
-                </div>
-              ) : (
-                <div className="w-12 h-12 rounded-2xl bg-light-bg dark:bg-dark-bg flex items-center justify-center text-light-muted/30 border border-light-border dark:border-dark-border flex-shrink-0">
-                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" /></svg>
-                </div>
-              )}
-              <div className="flex flex-col min-w-0">
-                 <span className="text-[11px] font-black text-light-muted uppercase tracking-[0.15em] mb-0.5">{timeAgo(issue.createdAt)}</span>
-                 <span className="text-[13px] font-bold text-light-primary dark:text-dark-primary truncate group-hover:text-brand-blue/70 transition-colors">
-                   {issue.assignedToName || 'Pending Assignment'}
-                 </span>
-              </div>
-           </div>
+        {/* Bottom row */}
+        <div className="flex items-center justify-between gap-3">
 
-           <div className="flex items-center gap-2 bg-light-bg dark:bg-dark-bg border border-light-border/60 dark:border-dark-border/60 px-3 py-1.5 rounded-xl shadow-sm">
-              <svg className="w-4 h-4 text-brand-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a.75.75 0 01-1.074-.765 1.65 1.65 0 00.33-1.583c-.39-.888-.66-1.825-.66-2.822 0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" /></svg>
-              <span className="text-[11px] font-black text-light-primary dark:text-dark-primary">{issue.comments?.length || 0}</span>
-           </div>
+          {/* Left — meta info */}
+          <div className="flex items-center gap-3 min-w-0">
+            {/* Evidence photo thumbnail */}
+            {issue.imageUrl && (
+              <img
+                src={issue.imageUrl.replace('/upload/', '/upload/w_56,h_56,c_fill,f_auto,q_60/')}
+                alt="Evidence"
+                className="w-9 h-9 rounded-md object-cover flex-shrink-0
+                           border border-[#D0D7DE] dark:border-[#30363D]"
+                onError={e => e.target.style.display = 'none'}
+              />
+            )}
+
+            <div className="min-w-0">
+              <p className="text-[#8C959F] text-xs truncate">
+                #{issue.id} · {timeAgo(issue.createdAt)}
+              </p>
+              {issue.assignedTo && (
+                <p className="text-[#1B3A6B] dark:text-[#4A90D9] text-xs
+                             font-medium truncate">
+                  📌 {issue.assignedTo.name}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Right — upvote button */}
+          {showUpvote && !isAdminView && (
+            <UpvoteButton
+              issueId={issue.id}
+              initialCount={issue.upvoteCount || 0}
+              initialVoted={issue.hasUpvoted || false}
+              disabled={isOwnIssue || issue.status === 'CLOSED'}
+              size="sm"
+            />
+          )}
+
+          {/* Admin view — show priority score instead */}
+          {isAdminView && (
+            <div className="text-right flex-shrink-0">
+              <p className="text-[#8C959F] text-[10px]">Priority</p>
+              <p className={`font-mono font-bold text-sm ${
+                priority >= 80 ? 'text-red-500'    :
+                priority >= 60 ? 'text-orange-500' :
+                priority >= 40 ? 'text-amber-500'  : 'text-[#57606A]'
+              }`}>
+                {Math.round(priority)}
+              </p>
+            </div>
+          )}
         </div>
       </div>
-
-      {/* Hover Identification Line */}
-      <div className="absolute bottom-0 left-0 w-0 h-1 bg-brand-blue group-hover:w-full transition-all duration-700" />
-    </Link>
+    </div>
   )
 }

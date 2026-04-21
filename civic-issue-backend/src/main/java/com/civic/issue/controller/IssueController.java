@@ -6,7 +6,6 @@ import com.civic.issue.service.AiValidationService;
 import com.civic.issue.service.CloudinaryService;
 import com.civic.issue.service.IssueService;
 import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -20,14 +19,20 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/issues")
-@RequiredArgsConstructor
 public class IssueController {
 
     private final IssueService          issueService;
     private final CloudinaryService     cloudinaryService;
     private final AiValidationService   aiValidationService;
 
-    // ── READ ──────────────────────────────────────────────────────────────────
+    public IssueController(
+            IssueService          issueService,
+            CloudinaryService     cloudinaryService,
+            AiValidationService   aiValidationService) {
+        this.issueService = issueService;
+        this.cloudinaryService = cloudinaryService;
+        this.aiValidationService = aiValidationService;
+    }
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<IssueResponse>>> getAllIssues(
@@ -44,8 +49,6 @@ public class IssueController {
         return ResponseEntity.ok(ApiResponse.success(issueService.getIssueById(id)));
     }
 
-    // ── CREATE ────────────────────────────────────────────────────────────────
-
     @PostMapping
     public ResponseEntity<ApiResponse<IssueResponse>> create(
             @Valid @RequestBody IssueRequest request,
@@ -55,7 +58,6 @@ public class IssueController {
                 .body(ApiResponse.success("Issue submitted successfully", res));
     }
 
-    // ✅ NEW — AI validation endpoint (called before final submit)
     @PostMapping("/validate-ai")
     public ResponseEntity<ApiResponse<AiValidationResponse>> validateWithAi(
             @Valid @RequestBody AiValidateRequest request,
@@ -64,8 +66,6 @@ public class IssueController {
         AiValidationResponse result = aiValidationService.validate(request);
         return ResponseEntity.ok(ApiResponse.success(result));
     }
-
-    // ── IMAGE UPLOAD ──────────────────────────────────────────────────────────
 
     @PostMapping("/upload-image")
     public ResponseEntity<ApiResponse<UploadResponse>> uploadImage(
@@ -79,8 +79,6 @@ public class IssueController {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Image uploaded", res));
     }
-
-    // ── STATUS UPDATE ─────────────────────────────────────────────────────────
 
     @PutMapping("/{id}/status")
     @PreAuthorize("hasAnyRole('ADMIN','REGIONAL_ADMIN')")
@@ -121,16 +119,12 @@ public class IssueController {
                         userDetails.getUsername())));
     }
 
-    // ── DELETE ────────────────────────────────────────────────────────────────
-
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable Long id) {
         issueService.deleteIssue(id);
         return ResponseEntity.ok(ApiResponse.success("Issue deleted", null));
     }
-
-    // ── COMMENTS ─────────────────────────────────────────────────────────────
 
     @PostMapping("/{id}/comments")
     public ResponseEntity<ApiResponse<CommentResponse>> addComment(

@@ -70,7 +70,12 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
 
                         // ── Public endpoints ──────────────────────────────────────
-                        .requestMatchers("/api/auth/**", "/oauth2/**", "/login/oauth2/**").permitAll()
+                        .requestMatchers(
+                                "/api/auth/**",
+                                "/oauth2/**",
+                                "/login/oauth2/**",
+                                "/api/bot/**"        // ✅ Twilio webhooks are public
+                        ).permitAll()
 
                         // ── Issue read — all authenticated users ──────────────────
                         .requestMatchers(HttpMethod.GET,

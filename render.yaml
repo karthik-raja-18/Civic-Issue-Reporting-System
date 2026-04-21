@@ -1,0 +1,52 @@
+# Render Blueprint configuration
+# For full documentation, see: https://render.com/docs/blueprint-spec
+
+databases:
+  - name: civic_db
+    databaseName: civic_db
+    plan: free
+    user: civic_user
+
+services:
+  - type: web
+    name: civic-backend
+    env: docker
+    repo: .
+    plan: free
+    region: singapore
+    envVars:
+      - key: DB_URL
+        fromDatabase:
+          name: civic_db
+          property: connectionString
+      - key: DB_USERNAME
+        fromDatabase:
+          name: civic_db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: civic_db
+          property: password
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      - key: APP_OAUTH2_AUTHORIZED_REDIRECT_URI
+        sync: false
+      - key: RECAPTCHA_SECRET_KEY
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+    dockerfilePath: ./civic-issue-backend/Dockerfile
