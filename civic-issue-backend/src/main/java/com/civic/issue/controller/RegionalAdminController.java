@@ -33,6 +33,7 @@ public class RegionalAdminController {
 
     private final UserRepository  userRepository;
     private final IssueRepository issueRepository;
+    private final com.civic.issue.repository.NotificationRepository notificationRepository;
     private final ZoneDetector    zoneDetector;
     private final PasswordEncoder passwordEncoder;
 
