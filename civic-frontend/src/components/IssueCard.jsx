@@ -30,11 +30,13 @@ export default function IssueCard({ issue, showUpvote = true }) {
   :                  null
 
   return (
-    <div className="bg-white dark:bg-[#161B22]
-                    border border-[#D0D7DE] dark:border-[#30363D]
-                    rounded-lg overflow-hidden
+    <div className={`bg-white dark:bg-[#161B22]
+                    border rounded-lg overflow-hidden
                     hover:border-[#1B3A6B]/40 dark:hover:border-[#4A90D9]/40
-                    transition-colors duration-150 group">
+                    transition-all duration-150 group
+                    ${issue.status === 'REOPENED' ? 'border-gov-danger/40 bg-gov-danger/[0.02] shadow-sm' : 
+                      issue.status === 'CLOSED' ? 'opacity-80 border-[#D0D7DE] dark:border-[#30363D]' : 
+                      'border-[#D0D7DE] dark:border-[#30363D]'}`}>
 
       {/* Priority accent bar — only if high priority */}
       {priorityBadge && (
@@ -107,7 +109,7 @@ export default function IssueCard({ issue, showUpvote = true }) {
             {/* Evidence photo thumbnail */}
             {issue.imageUrl && (
               <img
-                src={issue.imageUrl.replace('/upload/', '/upload/w_56,h_56,c_fill,f_auto,q_60/')}
+                src={issue.imageUrl}
                 alt="Evidence"
                 className="w-9 h-9 rounded-md object-cover flex-shrink-0
                            border border-[#D0D7DE] dark:border-[#30363D]"
@@ -118,6 +120,11 @@ export default function IssueCard({ issue, showUpvote = true }) {
             <div className="min-w-0">
               <p className="text-[#8C959F] text-xs truncate">
                 #{issue.id} · {timeAgo(issue.createdAt)}
+                {issue.distance !== undefined && (
+                  <span className="text-brand-blue font-bold ml-1">
+                    · {(issue.distance / 1000).toFixed(1)}km
+                  </span>
+                )}
               </p>
               {issue.assignedTo && (
                 <p className="text-[#1B3A6B] dark:text-[#4A90D9] text-xs
@@ -134,7 +141,7 @@ export default function IssueCard({ issue, showUpvote = true }) {
               issueId={issue.id}
               initialCount={issue.upvoteCount || 0}
               initialVoted={issue.hasUpvoted || false}
-              disabled={isOwnIssue || issue.status === 'CLOSED'}
+              disabled={isOwnIssue || issue.status === 'CLOSED' || issue.status === 'RESOLVED' || (issue.distance === undefined || issue.distance > 500)}
               size="sm"
             />
           )}

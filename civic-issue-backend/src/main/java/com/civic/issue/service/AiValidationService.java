@@ -3,67 +3,137 @@ package com.civic.issue.service;
 import com.civic.issue.dto.request.AiValidateRequest;
 import com.civic.issue.dto.response.AiValidationResponse;
 import com.civic.issue.entity.Issue;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
 
-/**
- * Orchestrates both AI image validation (Gemini) and duplicate detection.
- */
+@Slf4j
 @Service
+@RequiredArgsConstructor
 public class AiValidationService {
 
-    private static final Logger log = LoggerFactory.getLogger(AiValidationService.class);
-
-    private final GeminiService            geminiService;
+    private final GeminiService             geminiService;
     private final DuplicateDetectionService duplicateDetectionService;
 
-    public AiValidationService(GeminiService geminiService, DuplicateDetectionService duplicateDetectionService) {
-        this.geminiService = geminiService;
-        this.duplicateDetectionService = duplicateDetectionService;
-    }
-
     public AiValidationResponse validate(AiValidateRequest request) {
+        try {
+            System.out.println(">>> [DEBUG] Starting AI Validation for: " + (request != null ? request.getTitle() : "NULL"));
+            
+            if (request == null) {
+                return AiValidationResponse.builder()
+                        .valid(true).message("⚠️ Invalid request. Skipping AI.").isFallback(true).build();
+            }
 
-        // Now passing only 1 argument as per new GeminiService signature
-        GeminiService.GeminiValidationResult aiResult = geminiService.validateIssuePhoto(
-                request.getImageUrl()
-        );
+            if (request.getImageUrl() == null || request.getImageUrl().isBlank()) {
+                System.out.println(">>> [DEBUG] No image URL found. Skipping AI.");
+                return AiValidationResponse.builder()
+                        .valid(true)
+                        .message("⚠️ No photo provided. AI check skipped.")
+                        .aiConfidence(0)
+                        .duplicateFound(false)
+                        .isFallback(true) // Added explicit fallback true
+                        .build();
+            }
 
-        log.info("AI validation mapping for '{}': suggestedCategory={}", 
-                request.getTitle(), aiResult.getSuggestedCategory());
+            // ── Step 1: Gemini ────────────────────────────────────────────────
+            GeminiService.GeminiValidationResult aiResult;
+            try {
+                aiResult = geminiService.validateIssuePhoto(
+                        request.getImageUrl(),
+                        request.getTitle(),
+                        request.getDescription(),
+                        request.getCategory()
+                );
+            } catch (Exception e) {
+                System.err.println(">>> [ERROR] Gemini call failed: " + e.getMessage());
+                aiResult = GeminiService.GeminiValidationResult.fallbackValid();
+            }
 
-        if (!aiResult.isValidImage() || !aiResult.matchesCategory()) {
-            return AiValidationResponse.builder()
-                    .valid(false)
-                    .message("❌ AI rejected the image: " + aiResult.getRejectionReason())
-                    .suggestedCategory(aiResult.getSuggestedCategory())
-                    .descriptionMatch(aiResult.getMatchesDescription())
-                    .aiConfidence(aiResult.getConfidence())
-                    .isFallback(aiResult.isFallback())
-                    .duplicateFound(false)
-                    .build();
-        }
+            if (aiResult == null) aiResult = GeminiService.GeminiValidationResult.fallbackValid();
 
-        String message = "✅ Photo verified. " + aiResult.getGeneratedDescription();
-        if (aiResult.isFallback()) {
-            message = "⚠️ AI maintenance. Report accepted for review.";
-        }
+            log.info("AI result for '{}': valid={} confidence={}",
+                    request.getTitle(), aiResult.isValidImage(), aiResult.getConfidence());
 
-        Optional<Issue> duplicate = duplicateDetectionService.findNearbyDuplicate(
-                request.getLatitude(),
-                request.getLongitude(),
-                request.getCategory()
-        );
+            // ── Hard reject ───────────────────────────────────────────────────
+            if (!aiResult.isValidImage() || !aiResult.isMatchesCategory()) {
+                String reason = aiResult.getRejectionReason();
+                
+                if (aiResult.isValidImage() && !aiResult.isMatchesCategory()) {
+                    reason = "❌ Category Mismatch: The photo appears to show '" + aiResult.getSuggestedCategory() + 
+                             "', but you selected '" + request.getCategory() + "'. Please choose the correct category.";
+                } else if (reason == null || "NONE".equals(reason) || "Unknown failure".equals(reason)) {
+                    reason = "❌ Photo doesn't show a valid civic issue. Please take a clear photo of the problem.";
+                }
 
-        if (duplicate.isPresent()) {
-            Issue dup = duplicate.get();
-            double distance = DuplicateDetectionService.haversineMetres(
-                    request.getLatitude(), request.getLongitude(),
-                    dup.getLatitude(), dup.getLongitude()
-            );
+                return AiValidationResponse.builder()
+                        .valid(false)
+                        .message(reason)
+                        .suggestedCategory(aiResult.getSuggestedCategory())
+                        .descriptionMatch(aiResult.getMatchesDescription())
+                        .aiConfidence(aiResult.getConfidence())
+                        .duplicateFound(false)
+                        .isFallback(aiResult.isFallback())
+                        .build();
+            }
+
+            // ── Message ───────────────────────────────────────────────────────
+            String message;
+            if (aiResult.isFallback()) {
+                message = "⚠️ AI verification is currently undergoing maintenance. Your report is being accepted for manual district review.";
+            } else if ("NO".equals(aiResult.getMatchesDescription())) {
+                message = "⚠️ Photo verified but your description doesn't seem to match the visual evidence. Please ensure details are accurate.";
+            } else if ("PARTIAL".equals(aiResult.getMatchesDescription())) {
+                message = "✅ Photo verified. Consider refining your description for faster processing.";
+            } else {
+                message = "✅ Photo verified. Your issue has been successfully validated by AI.";
+            }
+
+            // ── Step 2: Duplicate check ───────────────────────────────────────
+            Optional<Issue> duplicate = Optional.empty();
+            if (request.getLatitude() != null && request.getLongitude() != null) {
+                try {
+                    duplicate = duplicateDetectionService.findNearbyDuplicate(
+                            request.getLatitude(),
+                            request.getLongitude(),
+                            request.getCategory()
+                    );
+                } catch (Exception e) {
+                    System.err.println(">>> [ERROR] Duplicate check failed: " + e.getMessage());
+                }
+            }
+
+            if (duplicate.isPresent()) {
+                Issue dup = duplicate.get();
+                // Safe distance calculation (handle nulls if any)
+                double dist = 0;
+                try {
+                    if (dup.getLatitude() != null && dup.getLongitude() != null) {
+                        dist = DuplicateDetectionService.haversineMetres(
+                                request.getLatitude(), request.getLongitude(),
+                                dup.getLatitude(), dup.getLongitude());
+                    }
+                } catch (Exception e) {
+                    System.err.println(">>> [ERROR] Distance calculation failed: " + e.getMessage());
+                }
+
+                log.info("Duplicate found: Issue #{} '{}' at {}m away",
+                        dup.getId(), dup.getTitle(), Math.round(dist));
+
+                return AiValidationResponse.builder()
+                        .valid(true)
+                        .message(message)
+                        .suggestedCategory(aiResult.getSuggestedCategory())
+                        .descriptionMatch(aiResult.getMatchesDescription())
+                        .aiConfidence(aiResult.getConfidence())
+                        .duplicateFound(true)
+                        .duplicateIssueId(dup.getId())
+                        .duplicateIssueTitle(dup.getTitle())
+                        .duplicateDistanceMetres(Math.round(dist * 10.0) / 10.0)
+                        .isFallback(aiResult.isFallback())
+                        .build();
+            }
 
             return AiValidationResponse.builder()
                     .valid(true)
@@ -71,22 +141,22 @@ public class AiValidationService {
                     .suggestedCategory(aiResult.getSuggestedCategory())
                     .descriptionMatch(aiResult.getMatchesDescription())
                     .aiConfidence(aiResult.getConfidence())
+                    .duplicateFound(false)
                     .isFallback(aiResult.isFallback())
-                    .duplicateFound(true)
-                    .duplicateIssueId(dup.getId())
-                    .duplicateIssueTitle(dup.getTitle())
-                    .duplicateDistanceMetres(Math.round(distance * 10.0) / 10.0)
+                    .build();
+
+        } catch (Throwable t) {
+            // ✅ Use Throwable to catch ABSOLUTELY EVERYTHING (Errors, NPEs, etc)
+            System.err.println(">>> [FATAL ERROR] AI validation crashed: " + t.getMessage());
+            t.printStackTrace();
+            return AiValidationResponse.builder()
+                    .valid(true)
+                    .message("⚠️ AI verification unavailable. You can still submit.")
+                    .aiConfidence(0)
+                    .duplicateFound(false)
+                    .isFallback(true)
                     .build();
         }
-
-        return AiValidationResponse.builder()
-                .valid(true)
-                .message(message)
-                .suggestedCategory(aiResult.getSuggestedCategory())
-                .descriptionMatch(aiResult.getMatchesDescription())
-                .aiConfidence(aiResult.getConfidence())
-                .isFallback(aiResult.isFallback())
-                .duplicateFound(false)
-                .build();
     }
+
 }

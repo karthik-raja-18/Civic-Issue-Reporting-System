@@ -74,7 +74,7 @@ export default function UpvoteButton({
         disabled={disabled || loading || locating}
         title={
           disabled
-            ? 'Cannot upvote your own issue or a closed issue'
+            ? 'Upvoting restricted: Must be an active issue, within 500m, and not your own report.'
             : voted
               ? 'Remove upvote'
               : 'Upvote this issue — must be within 500m'

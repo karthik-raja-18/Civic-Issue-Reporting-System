@@ -7,14 +7,16 @@ public class NotificationResponse {
     private String message;
     private LocalDateTime createdAt;
     private boolean read;
+    private Long issueId;
 
     public NotificationResponse() {}
 
-    public NotificationResponse(Long id, String message, LocalDateTime createdAt, boolean read) {
+    public NotificationResponse(Long id, String message, LocalDateTime createdAt, boolean read, Long issueId) {
         this.id = id;
         this.message = message;
         this.createdAt = createdAt;
         this.read = read;
+        this.issueId = issueId;
     }
 
     // Getters
@@ -22,12 +24,14 @@ public class NotificationResponse {
     public String getMessage() { return message; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public boolean isRead() { return read; }
+    public Long getIssueId() { return issueId; }
 
     // Setters
     public void setId(Long id) { this.id = id; }
     public void setMessage(String message) { this.message = message; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public void setRead(boolean read) { this.read = read; }
+    public void setIssueId(Long issueId) { this.issueId = issueId; }
 
     // Manual Builder
     public static NotificationResponseBuilder builder() {
@@ -40,6 +44,7 @@ public class NotificationResponse {
         public NotificationResponseBuilder message(String message) { res.message = message; return this; }
         public NotificationResponseBuilder createdAt(LocalDateTime dt) { res.createdAt = dt; return this; }
         public NotificationResponseBuilder read(boolean read) { res.read = read; return this; }
+        public NotificationResponseBuilder issueId(Long issueId) { res.issueId = issueId; return this; }
         public NotificationResponse build() { return res; }
     }
 }

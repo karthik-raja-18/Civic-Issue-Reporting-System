@@ -172,7 +172,7 @@ public class WhatsAppBotService {
         twilioService.sendWhatsApp(phone, "🤖 *AI Verifying details...*");
 
         try {
-            GeminiService.GeminiValidationResult result = geminiService.validateIssuePhoto(session.getTempImageUrl());
+            GeminiService.GeminiValidationResult result = geminiService.validateIssuePhoto(session.getTempImageUrl(), "WhatsApp User Image", "An image received from WhatsApp bot", "Other");
 
             if (!result.isValidImage()) {
                 twilioService.sendWhatsApp(phone, "❌ *Reject*: " + result.getRejectionReason());
@@ -181,14 +181,14 @@ public class WhatsAppBotService {
             }
 
             session.setTempCategory(result.getSuggestedCategory());
-            session.setTempDescription(result.getGeneratedDescription());
+            session.setTempDescription("AI suggested category: " + result.getSuggestedCategory());
             session.setTempTitle(result.getSuggestedCategory() + " identified");
             session.setState("AWAITING_CONFIRMATION");
             sessionRepository.save(session);
 
             String reportSummary = String.format(
                 "✅ *AI Identification*\n\n📋 *Category*: %s\n📝 *Description*: %s\n\nReply *CONFIRM* to publish this report.",
-                result.getSuggestedCategory(), result.getGeneratedDescription());
+                result.getSuggestedCategory(), "AI suggested category: " + result.getSuggestedCategory());
             
             twilioService.sendWhatsApp(phone, reportSummary);
         } catch (Exception e) {

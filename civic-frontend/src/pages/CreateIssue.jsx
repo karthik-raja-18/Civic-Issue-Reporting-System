@@ -45,7 +45,7 @@ export default function CreateIssue() {
     setError(null)
     try {
       const res = await issueApi.validateWithAi({
-        imageUrl,
+        imageUrl:    typeof imageUrl === 'object' ? imageUrl.imageUrl : (imageUrl || ''),
         title:       form.title,
         description: form.description,
         category:    form.category,
@@ -56,12 +56,28 @@ export default function CreateIssue() {
     } catch {
       setAiResult({
         valid: true,
-        message: '⚠️ AI system offline. Proceeding with manual resolution routing.',
+        message: '⚠️ AI system is currently undergoing maintenance. Your report is being accepted for manual district review.',
         aiConfidence: 0,
         duplicateFound: false,
+        isFallback: true,
       })
     } finally {
       setAiLoading(false)
+    }
+  }
+
+  const handleUpvoteExisting = async (existingId) => {
+    setLoading(true)
+    setError(null)
+    try {
+      await issueApi.upvote(existingId, location.latitude, location.longitude)
+      navigate('/dashboard', {
+        state: { success: 'You have upvoted the existing report. Thank you for contributing!' }
+      })
+    } catch (err) {
+      setError(extractError(err))
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -76,7 +92,7 @@ export default function CreateIssue() {
         title:              form.title,
         description:        form.description,
         category:           form.category,
-        imageUrl,
+        imageUrl:           typeof imageUrl === 'object' ? imageUrl.imageUrl : (imageUrl || ''),
         latitude:           location.latitude,
         longitude:          location.longitude,
         captchaToken,
@@ -316,22 +332,54 @@ export default function CreateIssue() {
                         </div>
 
                         {aiResult.duplicateFound && !skipDuplicate && (
-                           <div className="rounded-2xl border-2 border-brand-saffron/40 bg-brand-saffron/5 p-6 animate-slide-up">
-                              <div className="flex gap-4 mb-5">
-                                 <div className="w-10 h-10 rounded-full bg-brand-saffron text-white flex items-center justify-center flex-shrink-0"><svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg></div>
-                                 <div>
-                                    <h5 className="font-bold text-brand-saffron uppercase text-[13px] tracking-wider mb-1">Possible Duplicate</h5>
-                                    <p className="text-light-primary dark:text-dark-primary font-medium text-sm">A similar report already exists <span className="font-mono font-bold">{aiResult.duplicateDistanceMetres}m</span> from your location.</p>
-                                 </div>
-                              </div>
-                              <div className="flex gap-3">
-                                 <a href={`/issues/${aiResult.duplicateIssueId}`} target="_blank" rel="noreferrer" className="btn btn-secondary text-[11px] h-10 px-4">View Other Report</a>
-                                 <button onClick={() => setSkipDuplicate(true)} className="text-[11px] font-bold text-light-muted hover:text-light-primary uppercase tracking-widest decoration-dotted underline">Submit Anyway</button>
-                              </div>
-                           </div>
-                        )}
-                      </>
-                   )}
+                            <div className="rounded-2xl border-2 border-brand-saffron/40 bg-brand-saffron/5 p-6 animate-slide-up space-y-5">
+                               {/* Header */}
+                               <div className="flex gap-4 items-start">
+                                  <div className="w-10 h-10 rounded-full bg-brand-saffron text-white flex items-center justify-center flex-shrink-0 mt-0.5">
+                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>
+                                  </div>
+                                  <div>
+                                     <h5 className="font-black text-brand-saffron uppercase text-[13px] tracking-wider mb-1">Similar Issue Already Reported</h5>
+                                     <p className="text-light-muted dark:text-dark-muted text-sm font-medium">We found an existing report near your location. Would you like to upvote it to increase its priority, or submit a new one?</p>
+                                  </div>
+                               </div>
+
+                               {/* Existing issue card */}
+                               <div className="bg-light-surface dark:bg-dark-surface border border-brand-saffron/20 rounded-xl p-4 flex items-center justify-between gap-4">
+                                  <div className="min-w-0 flex-1">
+                                     <p className="text-light-primary dark:text-dark-primary font-black text-[15px] tracking-tight truncate">{aiResult.duplicateIssueTitle || 'Existing Report'}</p>
+                                     <p className="text-[11px] font-bold text-brand-saffron uppercase tracking-widest mt-0.5">
+                                        📍 {aiResult.duplicateDistanceMetres}m away from your location
+                                     </p>
+                                  </div>
+                                  <a href={`/issues/${aiResult.duplicateIssueId}`} target="_blank" rel="noreferrer"
+                                     className="flex-shrink-0 p-2 rounded-lg border border-light-border dark:border-dark-border text-brand-blue hover:bg-brand-blue/5 transition-all"
+                                     title="View this report">
+                                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
+                                  </a>
+                               </div>
+
+                               {/* Actions */}
+                               <div className="flex flex-col sm:flex-row gap-3">
+                                  <button
+                                     type="button"
+                                     onClick={() => handleUpvoteExisting(aiResult.duplicateIssueId)}
+                                     disabled={loading}
+                                     className="btn btn-primary bg-brand-saffron hover:bg-orange-600 text-white h-12 flex-1 shadow-lg shadow-brand-saffron/20 text-[12px] font-black uppercase tracking-widest"
+                                  >
+                                     {loading ? <Spinner size="sm" /> : '👍 Upvote Existing Report'}
+                                  </button>
+                                  <button
+                                     onClick={() => setSkipDuplicate(true)}
+                                     className="btn btn-secondary h-12 flex-1 text-[12px] font-black uppercase tracking-widest"
+                                  >
+                                     Submit as New Report
+                                  </button>
+                               </div>
+                            </div>
+                         )}
+                       </>
+                    )}
 
                    <div className="flex gap-4">
                       <button onClick={() => setStep(2)} className="btn btn-secondary h-12 flex-1">Back</button>

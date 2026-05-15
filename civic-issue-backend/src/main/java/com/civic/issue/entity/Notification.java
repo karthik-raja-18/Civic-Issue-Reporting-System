@@ -30,8 +30,10 @@ public class Notification {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    // ✅ AFTER
     @Column(name = "is_read", nullable = false)
     @Builder.Default
     private boolean read = false;
+
+    @Column(name = "issue_id")
+    private Long issueId;
 }

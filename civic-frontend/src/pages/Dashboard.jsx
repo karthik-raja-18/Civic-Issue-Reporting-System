@@ -6,8 +6,10 @@ import IssueCard from '../components/IssueCard'
 import Spinner from '../components/Spinner'
 import AlertMessage from '../components/AlertMessage'
 import { useTranslation } from 'react-i18next'
+import BottomSheet from '../components/BottomSheet'
+import LocationPicker from '../components/LocationPicker'
 
-const FILTERS = ['ALL', 'PENDING', 'IN_PROGRESS', 'RESOLVED']
+const FILTERS = ['ALL', 'PENDING', 'IN_PROGRESS', 'REOPENED', 'RESOLVED']
 
 export default function Dashboard() {
   const { user } = useAuth()
@@ -15,18 +17,22 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState(null)
   const [filter,  setFilter]  = useState('ALL')
-  const [tab,     setTab]     = useState('all')  // 'all' | 'mine'
+  const [tab,     setTab]     = useState('all')  // 'all' | 'mine' | 'trending' | 'nearby'
   const [search,  setSearch]  = useState('')
-  const { t, i18n } = useTranslation()
+  const [userLoc, setUserLoc] = useState(null)
+  const [showLocPicker, setShowLocPicker] = useState(false)
+  const { t } = useTranslation()
 
   const fetchIssues = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const res = tab === 'mine'
+      const res = (tab === 'mine')
         ? await issueApi.getMine()
         : await issueApi.getAll()
-      setIssues(res.data.data || [])
+      
+      let data = res.data.data || []
+      setIssues(data)
     } catch {
       setError('System communication error. Please refresh the dashboard.')
     } finally {
@@ -34,17 +40,57 @@ export default function Dashboard() {
     }
   }, [tab])
 
-  useEffect(() => { fetchIssues() }, [fetchIssues])
+  useEffect(() => { 
+    fetchIssues() 
+    if (!userLoc && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => setUserLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        null,
+        { enableHighAccuracy: false }
+      )
+    }
+  }, [fetchIssues, userLoc])
 
-  const visible = issues.filter((i) => {
-    const matchStatus = filter === 'ALL' || i.status === filter
-    const q = search.toLowerCase()
-    const matchSearch = !q ||
-      i.title.toLowerCase().includes(q) ||
-      i.category.toLowerCase().includes(q) ||
-      i.description.toLowerCase().includes(q)
-    return matchStatus && matchSearch
-  })
+  const handleManualLocation = (loc) => {
+    setUserLoc({ lat: loc.latitude, lng: loc.longitude })
+    setShowLocPicker(false)
+  }
+
+  // ── High Efficiency Sorting & Filtering ──
+  const getVisibleIssues = () => {
+    let list = issues.map(i => {
+      if (userLoc && i.latitude && i.longitude) {
+        i.distance = haversine(userLoc.lat, userLoc.lng, i.latitude, i.longitude)
+      }
+      return i
+    })
+
+    // 1. Tab-specific filtering/sorting
+    if (tab === 'trending') {
+      list = [...list].sort((a, b) => (b.upvoteCount || 0) - (a.upvoteCount || 0))
+    } else if (tab === 'nearby') {
+      // Show issues in user's zone OR within 5km
+      list = list.filter(i => {
+        const inZone = user?.zone && i.zone === user.zone
+        const isNear = i.distance !== undefined && i.distance <= 5000
+        return inZone || isNear
+      }).sort((a, b) => (a.distance || 999999) - (b.distance || 999999))
+    }
+
+    // 2. Status & Search filter
+    return list.filter((i) => {
+      const matchStatus = filter === 'ALL' || i.status === filter
+      const q = search.toLowerCase()
+      const matchSearch = !q ||
+        i.title.toLowerCase().includes(q) ||
+        i.category.toLowerCase().includes(q) ||
+        i.description.toLowerCase().includes(q)
+      return matchStatus && matchSearch
+    })
+  }
+
+  const visible = getVisibleIssues()
+  const trendingPool = [...issues].sort((a, b) => (b.upvoteCount || 0) - (a.upvoteCount || 0)).slice(0, 6)
 
   const stats = {
     total:      issues.length,
@@ -64,9 +110,18 @@ export default function Dashboard() {
                 <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
                 {t('dashboard.title')}
               </div>
+              {userLoc && (
+                <button onClick={() => setShowLocPicker(true)} className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-gov-success bg-gov-success/5 px-2 py-1 rounded-full border border-gov-success/10 hover:bg-gov-success/10 transition-all">
+                   <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" /></svg>
+                   Location Active
+                </button>
+              )}
            </div>
            <h1 className="text-3xl lg:text-4xl font-display font-extrabold text-light-primary dark:text-dark-primary tracking-tight">
-             {tab === 'mine' ? t('dashboard.myIssues') : t('dashboard.allIssues', 'All Civic Issues')}
+             {tab === 'mine' ? t('dashboard.myIssues') : 
+              tab === 'trending' ? 'Trending Reports' :
+              tab === 'nearby' ? 'Issues Near You' :
+              t('dashboard.allIssues', 'All Civic Issues')}
            </h1>
            <p className="text-light-muted dark:text-dark-muted font-medium text-[15px]">
              {t('dashboard.welcome')}, <span className="text-light-primary dark:text-dark-primary font-bold">{user?.name}</span>
@@ -82,6 +137,23 @@ export default function Dashboard() {
           </Link>
         )}
       </div>
+
+      {/* ── Trending Hub (Quick Upvote) ── */}
+      {tab === 'all' && trendingPool.length > 0 && !search && filter === 'ALL' && (
+        <div className="mb-12">
+           <div className="flex items-center justify-between mb-6">
+              <h2 className="text-sm font-black uppercase tracking-[0.2em] text-light-primary dark:text-dark-primary">🔥 Trending Hub</h2>
+              <button onClick={() => setTab('trending')} className="text-xs font-bold text-brand-blue hover:underline">View All →</button>
+           </div>
+           <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0">
+              {trendingPool.map(issue => (
+                <div key={issue.id} className="min-w-[280px] sm:min-w-[320px]">
+                   <IssueCard issue={issue} />
+                </div>
+              ))}
+           </div>
+        </div>
+      )}
 
       {/* ── Professional Statistics Strip ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
@@ -109,19 +181,21 @@ export default function Dashboard() {
         
         {/* View Switcher */}
         {user?.role === 'USER' && (
-          <div className="flex p-1 bg-light-bg dark:bg-dark-bg rounded-lg border border-light-border dark:border-dark-border gap-1">
-             <button 
-                onClick={() => setTab('all')}
-                className={`flex-1 lg:flex-none px-6 py-2 rounded-md text-[12px] font-bold uppercase tracking-wider transition-all ${tab === 'all' ? 'bg-light-surface dark:bg-dark-surface text-brand-blue dark:text-blue-400 shadow-sm' : 'text-light-muted dark:text-dark-muted hover:text-light-primary dark:hover:text-dark-primary'}`}
-             >
-                {t('nav.home')}
-             </button>
-             <button 
-                onClick={() => setTab('mine')}
-                className={`flex-1 lg:flex-none px-6 py-2 rounded-md text-[12px] font-bold uppercase tracking-wider transition-all ${tab === 'mine' ? 'bg-light-surface dark:bg-dark-surface text-brand-blue dark:text-blue-400 shadow-sm' : 'text-light-muted dark:text-dark-muted hover:text-light-primary dark:hover:text-dark-primary'}`}
-             >
-                {t('nav.myIssues')}
-             </button>
+          <div className="flex p-1 bg-light-bg dark:bg-dark-bg rounded-lg border border-light-border dark:border-dark-border gap-1 overflow-x-auto scrollbar-hide">
+             {[
+                { id: 'all',      label: 'Feed' },
+                { id: 'trending', label: 'Trending' },
+                { id: 'nearby',   label: 'Nearby' },
+                { id: 'mine',     label: 'My Reports' },
+             ].map(({ id, label }) => (
+               <button 
+                  key={id}
+                  onClick={() => setTab(id)}
+                  className={`px-4 sm:px-6 py-2 rounded-md text-[11px] font-black uppercase tracking-wider transition-all whitespace-nowrap ${tab === id ? 'bg-light-surface dark:bg-dark-surface text-brand-blue dark:text-blue-400 shadow-sm' : 'text-light-muted dark:text-dark-muted hover:text-light-primary dark:hover:text-dark-primary'}`}
+               >
+                  {label}
+               </button>
+             ))}
           </div>
         )}
 
@@ -135,7 +209,7 @@ export default function Dashboard() {
            <input
              type="text"
              className="input pl-10 h-11 text-sm font-medium border-light-border/60 transition-colors"
-              placeholder={t('createIssue.searchPlaceholder', 'Search by category, title or description...')}
+              placeholder={t('createIssue.searchPlaceholder', 'Search reports...')}
              value={search}
              onChange={(e) => setSearch(e.target.value)}
            />
@@ -145,15 +219,15 @@ export default function Dashboard() {
         <div className="flex items-center gap-2 overflow-x-auto pb-2 lg:pb-0 scrollbar-hide">
            {FILTERS.map((f) => (
              <button
-               key={f}
-               onClick={() => setFilter(f)}
-               className={`whitespace-nowrap px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest border transition-all ${
-                 filter === f
-                   ? 'bg-brand-blue dark:bg-blue-600 border-transparent text-white shadow-lg shadow-brand-blue/20'
-                   : 'bg-transparent border-light-border dark:border-dark-border text-light-muted dark:text-dark-muted hover:border-brand-blue/30 hover:text-light-primary dark:hover:text-dark-primary'
-               }`}
+                key={f}
+                onClick={() => setFilter(f)}
+                className={`whitespace-nowrap px-4 py-2 rounded-lg text-[11px] font-bold uppercase tracking-widest border transition-all ${
+                  filter === f
+                    ? 'bg-brand-blue dark:bg-blue-600 border-transparent text-white shadow-lg shadow-brand-blue/20'
+                    : 'bg-transparent border-light-border dark:border-dark-border text-light-muted dark:text-dark-muted hover:border-brand-blue/30 hover:text-light-primary dark:hover:text-dark-primary'
+                }`}
              >
-               {f === 'ALL' ? t('common.all') : t(`status.${f}`)}
+                {f === 'ALL' ? t('common.all') : t(`status.${f}`)}
              </button>
            ))}
         </div>
@@ -169,7 +243,7 @@ export default function Dashboard() {
          ) : error ? (
            <AlertMessage type="error" message={error} />
          ) : visible.length === 0 ? (
-           <EmptyState search={search} filter={filter} tab={tab} t={t} />
+           <EmptyState search={search} filter={filter} tab={tab} t={t} userLoc={userLoc} />
          ) : (
            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
              {visible.map((issue) => (
@@ -178,21 +252,40 @@ export default function Dashboard() {
            </div>
          )}
       </div>
+
+      {/* ── Manual Location Picker ── */}
+      <BottomSheet isOpen={showLocPicker} onClose={() => setShowLocPicker(false)} title="Set Your Location">
+         <div className="p-4">
+            <p className="text-[12px] font-bold text-light-muted uppercase tracking-widest mb-6 px-2 opacity-60">If your GPS is inaccurate, manually pick your location on the map to see nearby reports and enable upvoting.</p>
+            <LocationPicker 
+               onSelect={handleManualLocation}
+               initialLocation={userLoc ? { latitude: userLoc.lat, longitude: userLoc.lng } : null}
+            />
+         </div>
+      </BottomSheet>
     </div>
   )
 }
 
-function EmptyState({ search, filter, tab, t }) {
+function EmptyState({ search, filter, tab, t, userLoc }) {
+  const isNearby = tab === 'nearby'
   return (
     <div className="flex flex-col items-center justify-center py-24 text-center animate-fade">
       <div className="w-20 h-20 rounded-3xl bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border flex items-center justify-center text-light-muted dark:text-dark-muted mb-6 shadow-sm">
-        <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-        </svg>
+        {isNearby ? (
+          <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" /><path d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" /></svg>
+        ) : (
+          <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+          </svg>
+        )}
       </div>
-      <h3 className="text-xl font-display font-bold text-light-primary dark:text-dark-primary mb-2">{t('dashboard.noIssues')}</h3>
+      <h3 className="text-xl font-display font-bold text-light-primary dark:text-dark-primary mb-2">
+        {isNearby && !userLoc ? 'Location Access Needed' : t('dashboard.noIssues')}
+      </h3>
       <p className="text-light-muted dark:text-dark-muted max-w-sm font-medium text-sm leading-relaxed">
-        {search ? t('dashboard.registryClear') :
+        {isNearby && !userLoc ? 'Enable location permissions to see reports near your current position.' :
+         search ? t('dashboard.registryClear') :
          filter !== 'ALL' ? t('dashboard.noIssues') :
          tab === 'mine' ? t('dashboard.noIssuesSub') :
          t('dashboard.registryClear')}
@@ -202,6 +295,19 @@ function EmptyState({ search, filter, tab, t }) {
       )}
     </div>
   )
+}
+
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371e3
+  const φ1 = lat1 * Math.PI / 180
+  const φ2 = lat2 * Math.PI / 180
+  const Δφ = (lat2 - lat1) * Math.PI / 180
+  const Δλ = (lon2 - lon1) * Math.PI / 180
+  const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+            Math.cos(φ1) * Math.cos(φ2) *
+            Math.sin(Δλ / 2) * Math.sin(Δλ / 2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return R * c
 }
 
 const BarIcon = () => (
@@ -216,4 +322,3 @@ const GearIcon = () => (
 const CheckIcon = () => (
   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
 )
-

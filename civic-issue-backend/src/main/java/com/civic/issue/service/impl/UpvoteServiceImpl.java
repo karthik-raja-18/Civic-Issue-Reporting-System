@@ -68,7 +68,8 @@ public class UpvoteServiceImpl implements UpvoteService {
 
         if (existing.isPresent()) {
             upvoteRepository.delete(existing.get());
-            issue.setUpvoteCount(Math.max(0, issue.getUpvoteCount() - 1));
+            int currentCount = issue.getUpvoteCount() == null ? 0 : issue.getUpvoteCount();
+            issue.setUpvoteCount(Math.max(0, currentCount - 1));
             hasUpvoted = false;
         } else {
             // Using manual builder added to IssueUpvote entity

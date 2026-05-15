@@ -8,6 +8,7 @@ import AlertMessage from '../components/AlertMessage'
 import StatusBadge from '../components/StatusBadge'
 
 const STATUSES = ['PENDING', 'IN_PROGRESS']
+const FILTER_TABS = ['ALL', 'PENDING', 'IN_PROGRESS', 'RESOLVED', 'REOPENED', 'CLOSED']
 
 const ZONE_COLOR = {
   NORTH:   'text-blue-500 bg-blue-500/5 min-w-[120px]',
@@ -27,6 +28,7 @@ export default function RegionalDashboard() {
   const [updating, setUpdating] = useState(null)
   const [error,    setError]    = useState(null)
   const [success,  setSuccess]  = useState(null)
+  const [filter,    setFilter]  = useState('ALL')
 
   useEffect(() => { fetchData() }, [])
 
@@ -60,6 +62,8 @@ export default function RegionalDashboard() {
       setUpdating(null)
     }
   }
+
+  const filteredIssues = filter === 'ALL' ? issues : issues.filter(i => i.status === filter)
 
   if (loading) return (
     <div className="flex flex-col items-center justify-center py-40 gap-6">
@@ -132,21 +136,42 @@ export default function RegionalDashboard() {
            <p className="text-light-muted font-bold text-[12px] uppercase tracking-[0.2em]">No issues reported in your zone yet.</p>
         </div>
       ) : (
-        <div className="bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border rounded-3xl overflow-hidden shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-light-bg/50 dark:bg-dark-bg/50 border-b border-light-border dark:border-dark-border">
-                  <th className="px-8 py-6 text-[10px] font-black text-light-muted uppercase tracking-[0.3em]">ID</th>
-                  <th className="px-8 py-6 text-[10px] font-black text-light-muted uppercase tracking-[0.3em]">Issue Details</th>
-                  <th className="px-8 py-6 text-[10px] font-black text-light-muted uppercase tracking-[0.3em] hidden md:table-cell">Reporter</th>
-                  <th className="px-8 py-6 text-[10px] font-black text-light-muted uppercase tracking-[0.3em]">Status</th>
-                  <th className="px-8 py-6 text-[10px] font-black text-light-muted uppercase tracking-[0.3em] hidden lg:table-cell">Time</th>
-                  <th className="px-8 py-6 text-[10px] font-black text-light-muted uppercase tracking-[0.3em] text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-light-border/40 dark:divide-dark-border/40">
-                {issues.map((issue) => (
+        <div className="space-y-6">
+          <div className="flex gap-2 overflow-x-auto pb-2">
+            {FILTER_TABS.map(s => (
+              <button
+                key={s}
+                onClick={() => setFilter(s)}
+                className={`px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${
+                  filter === s 
+                    ? 'bg-brand-blue text-white shadow-lg shadow-brand-blue/30 scale-105'
+                    : 'bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border text-light-muted hover:border-brand-blue/30'
+                }`}
+              >
+                {s.replace('_', ' ')}
+              </button>
+            ))}
+          </div>
+
+          <div className="bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border rounded-3xl overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="bg-light-bg/50 dark:bg-dark-bg/50 border-b border-light-border dark:border-dark-border">
+                    <th className="px-8 py-6 text-[10px] font-black text-light-muted uppercase tracking-[0.3em]">ID</th>
+                    <th className="px-8 py-6 text-[10px] font-black text-light-muted uppercase tracking-[0.3em]">Issue Details</th>
+                    <th className="px-8 py-6 text-[10px] font-black text-light-muted uppercase tracking-[0.3em] hidden md:table-cell">Reporter</th>
+                    <th className="px-8 py-6 text-[10px] font-black text-light-muted uppercase tracking-[0.3em]">Status</th>
+                    <th className="px-8 py-6 text-[10px] font-black text-light-muted uppercase tracking-[0.3em] hidden lg:table-cell">Time</th>
+                    <th className="px-8 py-6 text-[10px] font-black text-light-muted uppercase tracking-[0.3em] text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-light-border/40 dark:divide-dark-border/40">
+                  {filteredIssues.length === 0 ? (
+                    <tr>
+                      <td colSpan="6" className="py-12 text-center text-light-muted text-sm font-medium">No issues found for the selected status.</td>
+                    </tr>
+                  ) : filteredIssues.map((issue) => (
                   <tr key={issue.id} className="group hover:bg-light-bg/30 dark:hover:bg-dark-bg/30 transition-colors">
                     <td className="px-8 py-6 font-mono text-[11px] font-black text-light-muted">#{issue.id.toString().slice(-6)}</td>
                     <td className="px-8 py-6">
@@ -212,6 +237,7 @@ export default function RegionalDashboard() {
             <span>Resolution Tracking — {issues.length} active issues</span>
             <p className="text-[10px] opacity-40">System Pulse: Nominal</p>
           </div>
+         </div>
         </div>
       )}
     </div>

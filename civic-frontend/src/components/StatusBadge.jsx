@@ -29,7 +29,7 @@ export default function StatusBadge({ status }) {
       dot: 'bg-current opacity-40'
     },
     REOPENED: { 
-      label: 'Reactivated', 
+      label: 'REOPENED', 
       bg: 'bg-gov-danger/5', 
       text: 'text-gov-danger', 
       border: 'border-gov-danger/20',

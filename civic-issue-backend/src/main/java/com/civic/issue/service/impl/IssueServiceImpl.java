@@ -33,6 +33,8 @@ public class IssueServiceImpl implements IssueService {
     private final IssueUpvoteRepository     upvoteRepository;
     private final PriorityScoreService      priorityScoreService;
     private final SmsNotificationService    smsNotificationService;
+    private final com.civic.issue.service.CaptchaService captchaService;
+    private final com.civic.issue.service.ZoneDetector zoneDetector;
 
     public IssueServiceImpl(
             IssueRepository           issueRepository,
@@ -41,7 +43,9 @@ public class IssueServiceImpl implements IssueService {
             CommentRepository         commentRepository,
             IssueUpvoteRepository     upvoteRepository,
             PriorityScoreService      priorityScoreService,
-            SmsNotificationService    smsNotificationService) {
+            SmsNotificationService    smsNotificationService,
+            com.civic.issue.service.CaptchaService captchaService,
+            com.civic.issue.service.ZoneDetector zoneDetector) {
         this.issueRepository = issueRepository;
         this.userRepository = userRepository;
         this.notificationRepository = notificationRepository;
@@ -49,21 +53,37 @@ public class IssueServiceImpl implements IssueService {
         this.upvoteRepository = upvoteRepository;
         this.priorityScoreService = priorityScoreService;
         this.smsNotificationService = smsNotificationService;
+        this.captchaService = captchaService;
+        this.zoneDetector = zoneDetector;
     }
 
     @Override
     @Transactional
     public IssueResponse createIssue(IssueRequest request, String userEmail) {
+        boolean captchaOk;
+        try { 
+            captchaOk = captchaService.verify(request.getCaptchaToken()); 
+        } catch (Exception e) {
+            log.error("CAPTCHA check failed — allowing: {}", e.getMessage());
+            captchaOk = true;
+        }
+        if (!captchaOk) throw new IssueRejectionException("CAPTCHA failed.");
+
         User creator = findUserByEmail(userEmail);
         Issue issue = Issue.builder()
                 .title(request.getTitle()).description(request.getDescription())
                 .category(request.getCategory()).imageUrl(request.getImageUrl())
                 .latitude(request.getLatitude()).longitude(request.getLongitude())
+                .zone(zoneDetector.detectZone(request.getLatitude(), request.getLongitude()))
                 .createdBy(creator).build();
 
         issue.setPriorityScore(priorityScoreService.calculate(issue));
         Issue saved = issueRepository.save(issue);
         log.info("Issue #{} created by {}", saved.getId(), userEmail);
+        
+        // Notify Zone Admin about NEW issue
+        notifyZoneAdmin(saved, String.format("New Case Logged: A new %s report (#%d) has been opened in your zone.", saved.getCategory(), saved.getId()));
+        
         return mapToResponse(saved);
     }
 
@@ -104,7 +124,13 @@ public class IssueServiceImpl implements IssueService {
         checkZonePermission(issue, currentUser);
 
         if (request.getStatus() == IssueStatus.RESOLVED) {
-            throw new IssueRejectionException("Use 'Mark as Resolved' button to upload a proof photo.");
+            throw new IssueRejectionException("Mandatory evidence required. Use 'Mark as Resolved' to upload a photo.");
+        }
+        if (request.getStatus() == IssueStatus.CLOSED) {
+            throw new IssueRejectionException("Only the original reporter can confirm resolution and CLOSE this issue.");
+        }
+        if (request.getStatus() == IssueStatus.REOPENED) {
+            throw new IssueRejectionException("Only the original reporter can REOPEN this issue if they are unsatisfied with the fix.");
         }
 
         issue.setStatus(request.getStatus());
@@ -117,7 +143,10 @@ public class IssueServiceImpl implements IssueService {
             }
         } catch (Exception e) { log.warn("SMS failed: {}", e.getMessage()); }
 
-        notify(issue.getCreatedBy(), String.format("Status of '%s' updated to %s", issue.getTitle(), request.getStatus()));
+        notify(issue.getCreatedBy(), String.format("Status of '%s' updated to %s", issue.getTitle(), request.getStatus()), issue.getId());
+        if (request.getStatus() == IssueStatus.IN_PROGRESS) {
+            notifyZoneAdmin(issue, String.format("Operational Update: Work has started on case #%d in your zone.", issue.getId()));
+        }
         return mapToResponse(updated);
     }
 
@@ -133,10 +162,13 @@ public class IssueServiceImpl implements IssueService {
         issue.setResolvedAt(LocalDateTime.now());
         issue.setPriorityScore(priorityScoreService.calculate(issue));
         Issue updated = issueRepository.save(issue);
+        ensureZoneSet(updated);
 
         try { smsNotificationService.notifyResolved(updated); }
         catch (Exception e) { log.warn("SMS failed: {}", e.getMessage()); }
 
+        notify(issue.getCreatedBy(), String.format("ACTION COMPLETED: Your report '%s' has been officially RESOLVED. Please verify the fix.", issue.getTitle()), issue.getId());
+        notifyZoneAdmin(updated, String.format("RESOLUTION POSTED: Case #%d has been RESOLVED by the assigned official. Awaiting citizen verification.", updated.getId()));
         return mapToResponse(updated);
     }
 
@@ -154,10 +186,12 @@ public class IssueServiceImpl implements IssueService {
         issue.setClosedAt(LocalDateTime.now());
         issue.setPriorityScore(0.0);
         Issue updated = issueRepository.save(issue);
+        ensureZoneSet(updated);
 
         try { smsNotificationService.notifyClosed(updated); }
         catch (Exception e) { log.warn("SMS failed: {}", e.getMessage()); }
 
+        notifyZoneAdmin(updated, String.format("Success: Citizen has verified and CLOSED case #%d in your zone.", updated.getId()));
         return mapToResponse(updated);
     }
 
@@ -176,9 +210,15 @@ public class IssueServiceImpl implements IssueService {
         issue.setResolvedImageUrl(null);
         issue.setPriorityScore(priorityScoreService.calculate(issue));
         Issue updated = issueRepository.save(issue);
+        ensureZoneSet(updated);
 
         try { smsNotificationService.notifyAdminReopened(updated); }
         catch (Exception e) { log.warn("SMS failed: {}", e.getMessage()); }
+
+        if (updated.getAssignedTo() != null) {
+            notify(updated.getAssignedTo(), String.format("URGENT: Case #%d ('%s') was REOPENED by the reporter. Re-evaluation required.", updated.getId(), updated.getTitle()), updated.getId());
+        }
+        notifyZoneAdmin(updated, String.format("Dispute Alert: Case #%d ('%s') has been REOPENED. Citizen is unsatisfied with the fix.", updated.getId(), updated.getTitle()));
 
         return mapToResponse(updated);
     }
@@ -232,14 +272,37 @@ public class IssueServiceImpl implements IssueService {
                 .map(this::mapToResponse).orElse(null);
     }
 
+    private void ensureZoneSet(Issue issue) {
+        if (issue.getZone() == null || issue.getZone() == com.civic.issue.enums.Zone.UNASSIGNED) {
+            issue.setZone(zoneDetector.detectZone(issue.getLatitude(), issue.getLongitude()));
+            issueRepository.save(issue);
+        }
+    }
+
     private void checkZonePermission(Issue issue, User currentUser) {
         if (currentUser.getRole() == RoleType.ADMIN) return;
         if (issue.getZone() != null && issue.getZone() == currentUser.getZone()) return;
         throw new UnauthorizedException("Access denied for zone: " + (issue.getZone()));
     }
 
-    private void notify(User user, String message) {
-        notificationRepository.save(Notification.builder().message(message).user(user).build());
+    private void notifyZoneAdmin(Issue issue, String message) {
+        // 1. Notify all Regional Admins in that zone
+        if (issue.getZone() != null && issue.getZone() != com.civic.issue.enums.Zone.UNASSIGNED) {
+            userRepository.findAllByRoleAndZone(RoleType.REGIONAL_ADMIN, issue.getZone())
+                    .forEach(admin -> notify(admin, message, issue.getId()));
+        }
+        
+        // 2. Also notify System Admins for visibility
+        userRepository.findByRole(RoleType.ADMIN)
+                .forEach(admin -> notify(admin, "[Zone Alert] " + message, issue.getId()));
+    }
+
+    private void notify(User user, String message, Long issueId) {
+        notificationRepository.save(Notification.builder()
+                .message(message)
+                .user(user)
+                .issueId(issueId)
+                .build());
     }
 
     private IssueResponse mapToResponse(Issue issue) {

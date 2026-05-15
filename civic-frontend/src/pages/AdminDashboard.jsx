@@ -6,7 +6,8 @@ import StatusBadge from '../components/StatusBadge'
 import Spinner from '../components/Spinner'
 import AlertMessage from '../components/AlertMessage'
 
-const STATUSES = ['PENDING', 'IN_PROGRESS', 'RESOLVED', 'CLOSED']
+const STATUSES = ['PENDING', 'IN_PROGRESS']
+const FILTER_TABS = ['ALL', 'PENDING', 'IN_PROGRESS', 'RESOLVED', 'REOPENED', 'CLOSED']
 
 const ZONE_COLORS = {
   NORTH:   'text-blue-500',
@@ -23,6 +24,8 @@ export default function AdminDashboard() {
   const [updating, setUpdating] = useState(null)
   const [error,    setError]    = useState(null)
   const [success,  setSuccess]  = useState(null)
+
+  const [filter, setFilter] = useState('ALL')
 
   useEffect(() => { fetchIssues() }, [])
 
@@ -67,6 +70,8 @@ export default function AdminDashboard() {
   const pending    = issues.filter(i => i.status === 'PENDING').length
   const inProgress = issues.filter(i => i.status === 'IN_PROGRESS').length
   const resolved   = issues.filter(i => i.status === 'RESOLVED' || i.status === 'CLOSED').length
+
+  const filteredIssues = filter === 'ALL' ? issues : issues.filter(i => i.status === filter)
 
   if (loading) return (
     <div className="flex flex-col items-center justify-center py-40 gap-6">
@@ -126,6 +131,22 @@ export default function AdminDashboard() {
         <AlertMessage type="success" message={success} onDismiss={() => setSuccess(null)} />
       </div>
 
+      <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+        {FILTER_TABS.map(s => (
+          <button
+            key={s}
+            onClick={() => setFilter(s)}
+            className={`px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${
+              filter === s 
+                ? 'bg-brand-blue text-white shadow-lg shadow-brand-blue/30 scale-105'
+                : 'bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border text-light-muted hover:border-brand-blue/30'
+            }`}
+          >
+            {s.replace('_', ' ')}
+          </button>
+        ))}
+      </div>
+
       <div className="bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border rounded-3xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-left">
@@ -141,7 +162,11 @@ export default function AdminDashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-light-border/50 dark:divide-dark-border/50">
-                {issues.map((issue) => {
+                {filteredIssues.length === 0 ? (
+                  <tr>
+                    <td colSpan="7" className="py-12 text-center text-light-muted text-sm font-medium">No issues found for the selected status.</td>
+                  </tr>
+                ) : filteredIssues.map((issue) => {
                   const breached = isSlaBreached(issue)
                   const isFinished = issue.status === 'RESOLVED' || issue.status === 'CLOSED'
                   

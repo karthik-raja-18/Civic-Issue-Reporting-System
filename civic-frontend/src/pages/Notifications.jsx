@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { notificationApi } from '../api/notificationApi'
 import { timeAgo } from '../utils/helpers'
 import Spinner from '../components/Spinner'
@@ -84,12 +85,21 @@ export default function Notifications() {
 
 function NotificationItem({ n }) {
   const isPriority = !n.read
+  const navigate = useNavigate()
+
+  const handleClick = () => {
+    if (n.issueId) {
+      navigate(`/issues/${n.issueId}`)
+    }
+  }
   
   return (
-    <div className={`group relative flex items-start gap-6 p-6 rounded-2xl border transition-all duration-300 ${
+    <div 
+      onClick={handleClick}
+      className={`group relative flex items-start gap-6 p-6 rounded-2xl border transition-all duration-300 ${n.issueId ? 'cursor-pointer hover:scale-[1.01]' : ''} ${
       isPriority 
-        ? 'bg-light-surface dark:bg-dark-surface border-brand-blue/30 shadow-lg shadow-brand-blue/5' 
-        : 'bg-light-bg/50 dark:bg-dark-bg/50 border-light-border/40 dark:border-dark-border/40 grayscale opacity-70 hover:grayscale-0 hover:opacity-100'
+        ? 'bg-light-surface dark:bg-dark-surface border-brand-blue/30 shadow-lg shadow-brand-blue/5 hover:border-brand-blue/60' 
+        : 'bg-light-bg/50 dark:bg-dark-bg/50 border-light-border/40 dark:border-dark-border/40 grayscale opacity-70 hover:grayscale-0 hover:opacity-100 hover:border-light-border'
     }`}>
       {/* Visual Indicator */}
       <div className={`mt-1.5 w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-transform duration-300 group-hover:scale-110 ${
@@ -104,7 +114,7 @@ function NotificationItem({ n }) {
         <div className="flex items-center justify-between gap-4">
            {isPriority && <span className="text-[10px] font-black text-brand-blue uppercase tracking-widest">Update</span>}
            <span className="text-[10px] font-black text-light-muted dark:text-dark-muted uppercase tracking-[0.1em] ml-auto">
-              ID: {(Math.random() * 100000).toFixed(0)}
+              {n.issueId ? `Issue #${n.issueId}` : `Ref: ${(n.id * 73).toString().slice(-5)}`}
            </span>
         </div>
         <p className={`text-[15px] font-medium leading-relaxed tracking-tight ${

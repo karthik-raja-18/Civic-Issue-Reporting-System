@@ -1,5 +1,7 @@
 package com.civic.issue.controller;
 
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import com.civic.issue.dto.request.*;
 import com.civic.issue.dto.response.*;
 import com.civic.issue.service.AiValidationService;
@@ -17,22 +19,16 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.util.List;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/issues")
+@RequiredArgsConstructor
 public class IssueController {
 
     private final IssueService          issueService;
     private final CloudinaryService     cloudinaryService;
     private final AiValidationService   aiValidationService;
-
-    public IssueController(
-            IssueService          issueService,
-            CloudinaryService     cloudinaryService,
-            AiValidationService   aiValidationService) {
-        this.issueService = issueService;
-        this.cloudinaryService = cloudinaryService;
-        this.aiValidationService = aiValidationService;
-    }
+    private final com.civic.issue.service.UpvoteService upvoteService;
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<IssueResponse>>> getAllIssues(
@@ -62,9 +58,19 @@ public class IssueController {
     public ResponseEntity<ApiResponse<AiValidationResponse>> validateWithAi(
             @Valid @RequestBody AiValidateRequest request,
             @AuthenticationPrincipal UserDetails userDetails) {
-
-        AiValidationResponse result = aiValidationService.validate(request);
-        return ResponseEntity.ok(ApiResponse.success(result));
+        try {
+            AiValidationResponse result = aiValidationService.validate(request);
+            return ResponseEntity.ok(ApiResponse.success(result));
+        } catch (Throwable t) {
+            log.error("Master controller failure in validate-ai", t);
+            return ResponseEntity.ok(ApiResponse.success(
+                AiValidationResponse.builder()
+                    .valid(true)
+                    .message("⚠️ AI verification unavailable.")
+                    .isFallback(true)
+                    .build()
+            ));
+        }
     }
 
     @PostMapping("/upload-image")
@@ -133,5 +139,27 @@ public class IssueController {
             @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success("Comment added",
                 issueService.addComment(id, request, userDetails.getUsername())));
+    }
+
+    // ── Upvotes ─────────────────────────────────────────────────────────────
+
+    @PostMapping("/{id}/upvote")
+    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> upvote(
+            @PathVariable Long id,
+            @RequestBody(required = false) java.util.Map<String, Double> coords,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        Double lat = coords != null ? coords.get("latitude")  : null;
+        Double lng = coords != null ? coords.get("longitude") : null;
+        
+        return ResponseEntity.ok(ApiResponse.success("Upvote toggled",
+                upvoteService.toggleUpvote(id, userDetails.getUsername(), lat, lng)));
+    }
+
+    @GetMapping("/{id}/upvote")
+    public ResponseEntity<ApiResponse<java.util.Map<String, Boolean>>> getUpvoteStatus(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        boolean voted = upvoteService.hasUpvoted(id, userDetails.getUsername());
+        return ResponseEntity.ok(ApiResponse.success(java.util.Map.of("hasUpvoted", voted)));
     }
 }

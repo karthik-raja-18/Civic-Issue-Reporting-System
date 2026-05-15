@@ -118,10 +118,22 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiResponse<Void>> handleGeneric(Exception ex) {
-        log.error("Unexpected error: {}", ex.getMessage(), ex);
+    public ResponseEntity<ApiResponse<Object>> handleGeneric(Exception ex) {
+        log.error("Unexpected error caught by GlobalExceptionHandler: {}", ex.getMessage(), ex);
+        
+        // Developer debugging info
+        java.io.StringWriter sw = new java.io.StringWriter();
+        ex.printStackTrace(new java.io.PrintWriter(sw));
+        String stackTrace = sw.toString();
+
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ApiResponse.error(
-                        "An unexpected error occurred. Please try again later."));
+                .body(ApiResponse.builder()
+                        .success(false)
+                        .message("Internal Server Error: " + ex.getMessage())
+                        .data(java.util.Map.of(
+                            "error", ex.getClass().getName(),
+                            "stackTrace", stackTrace.substring(0, Math.min(stackTrace.length(), 2000))
+                        ))
+                        .build());
     }
 }

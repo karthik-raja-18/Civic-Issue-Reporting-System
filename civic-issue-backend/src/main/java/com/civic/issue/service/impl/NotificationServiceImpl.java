@@ -35,6 +35,7 @@ public class NotificationServiceImpl implements NotificationService {
                         .message(n.getMessage())
                         .createdAt(n.getCreatedAt())
                         .read(n.isRead())
+                        .issueId(n.getIssueId())
                         .build())
                 .toList();
     }

@@ -20,6 +20,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     Optional<User> findByRoleAndZone(RoleType role, Zone zone);
 
+    List<User> findAllByRoleAndZone(RoleType role, Zone zone);
+
     // ── OAuth (from fix8b) ──────────────────────────────────────────────────
     Optional<User> findByOauthProviderAndOauthId(String oauthProvider, String oauthId);
 

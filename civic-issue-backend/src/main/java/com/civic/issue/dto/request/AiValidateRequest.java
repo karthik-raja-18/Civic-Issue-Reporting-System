@@ -11,7 +11,6 @@ import lombok.Data;
 @Data
 public class AiValidateRequest {
 
-    @NotBlank
     private String imageUrl;      // Cloudinary URL of uploaded photo
 
     @NotBlank
@@ -22,9 +21,7 @@ public class AiValidateRequest {
     @NotBlank
     private String category;
 
-    @NotNull
     private Double latitude;
 
-    @NotNull
     private Double longitude;
 }

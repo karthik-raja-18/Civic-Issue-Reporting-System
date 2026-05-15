@@ -20,12 +20,19 @@ export default function Navbar() {
 
   useEffect(() => {
     if (!user) return
-    notificationApi.getAll()
-      .then(res => {
-        const count = (res.data.data || []).filter(n => !n.read).length
-        setUnread(count)
-      })
-      .catch(() => {})
+    
+    const fetchNotifications = () => {
+      notificationApi.getAll()
+        .then(res => {
+          const count = (res.data.data || []).filter(n => !n.read).length
+          setUnread(count)
+        })
+        .catch(() => {})
+    }
+
+    fetchNotifications()
+    const interval = setInterval(fetchNotifications, 10000) // Poll every 10s
+    return () => clearInterval(interval)
   }, [user])
 
   const toggleTheme = () => {

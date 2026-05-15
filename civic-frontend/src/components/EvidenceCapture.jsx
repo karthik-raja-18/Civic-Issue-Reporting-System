@@ -163,9 +163,9 @@ export default function EvidenceCapture({
           loc?.longitude
         )
         setUploadProgress(100)
-        setUploadedUrl(url)
+        setUploadedUrl(url.imageUrl || url)
         setPhase('done')
-        onUpload?.(url)
+        onUpload?.(url.imageUrl || url)
 
       } catch (err) {
         setError(err.message || 'Upload failed. Please try again.')

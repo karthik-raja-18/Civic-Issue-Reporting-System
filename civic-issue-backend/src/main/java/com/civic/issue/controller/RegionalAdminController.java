@@ -55,6 +55,12 @@ public class RegionalAdminController {
                     "Email already registered: " + request.getEmail());
         }
 
+        // Check if an admin already exists for this zone
+        if (userRepository.findByRoleAndZone(RoleType.REGIONAL_ADMIN, request.getZone()).isPresent()) {
+            throw new DuplicateResourceException(
+                    "An administrator is already assigned to the " + request.getZone() + " zone.");
+        }
+
         User admin = User.builder()
                 .name(request.getName())
                 .email(request.getEmail())
@@ -153,6 +159,13 @@ public class RegionalAdminController {
         issue.setAssignedTo(admin);
         issue.setZone(admin.getZone());
         issueRepository.save(issue);
+
+        // Notify the newly assigned admin
+        notificationRepository.save(com.civic.issue.entity.Notification.builder()
+                .user(admin)
+                .message(String.format("New Assignment: You have been assigned to handle Case #%d ('%s').", issue.getId(), issue.getTitle()))
+                .issueId(issue.getId())
+                .build());
 
         return ResponseEntity.ok(ApiResponse.success(
                 "Issue assigned to " + admin.getName(), toIssueResponse(issue)));

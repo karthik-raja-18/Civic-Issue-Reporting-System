@@ -2,8 +2,7 @@ package com.civic.issue.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -14,165 +13,201 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Base64;
 
+@Slf4j
 @Service
 public class GeminiService {
 
-    private static final Logger log = LoggerFactory.getLogger(GeminiService.class);
-
-    @Value("${gemini.api.key}")
+    @Value("${gemini.api.key:NOTSET}")
     private String apiKey;
 
     private static final String GEMINI_URL =
         "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=";
 
-    private static final String VALIDATION_PROMPT = """
-        You are a strict security and validation auditor for the Coimbatore City Corporation.
-        Your task is to analyze the provided image and determine if it is a GENUINE, LIVE PHOTO of a civic issue.
+    private static final String PROMPT = """
+        You are a civic issue validator for a government complaint system in Coimbatore, India.
 
-        CRITICAL VALIDATION RULES:
-        1. REJECT if the image is a screenshot (check for status bars, UI elements, or phone borders).
-        2. REJECT if the image is a photo of another screen (check for pixelation, moiré patterns, or reflections on glass).
-        3. REJECT if the image looks like a professional stock photo or an internet download.
-        4. REJECT if there is no clear civic issue (Pothole, Waste, Water Leak, Broken Streetlight, etc.).
-        5. ACCEPT only if it looks like a natural, candid photo taken by a citizen's mobile camera outdoors.
+        A citizen has submitted a photo along with:
+        - Title: %s
+        - Description: %s
+        - Category: %s
 
-        REQUIRED OUTPUT FIELDS:
-        - validImage: true/false (must be false if it's a gallery/fake/screen-photo).
-        - suggestedCategory: The most accurate category.
-        - generatedDescription: A clear, professional 1-sentence summary of the problem.
-        - rejectionReason: If validImage is false, explain why.
-        - confidence: 0-100 score of your certainty.
-        - matchesDescription: "YES" or "NO" (does it look like a real problem).
-        - matchesCategory: true/false.
+        Analyse the photo carefully and answer these 5 questions:
 
-        JSON FORMAT:
+        1. VALID_IMAGE: Is this image clearly showing a real civic/public infrastructure issue?
+           Valid issues: pothole, broken road, garbage/waste dump, waterlogging, broken streetlight,
+           open manhole, damaged footpath, sewage overflow, illegal construction, fallen tree/branch,
+           water pipe leakage, damaged public property. 
+           CRITICAL: If the image is pitch black, completely blurry, a selfie, a screenshot of text, 
+           or doesn't show any recognizable civic feature, answer NO.
+           
+        2. MATCHES_DESCRIPTION: Does what you see in the photo match the title and description given?
+           Answer YES, NO, or PARTIAL.
+
+        3. SUGGESTED_CATEGORY: Based on the photo, what is the most accurate category?
+           Choose ONE from: Pothole, Garbage, Waterlogging, Streetlight, Drainage, Sewage,
+           Road Damage, Footpath, Illegal Construction, Fallen Tree, Water Leakage, Other
+
+        4. MATCHES_CATEGORY: Does the photo contain elements that match the selected category '%s'?
+           Answer YES or NO.
+
+        5. REJECTION_REASON: If the image is NOT valid (not a real civic issue, blurry/dark/unclear,
+           random photo, selfie, screenshot, etc.) OR if it completely doesn't match the selected category,
+           explain briefly why it was rejected. 
+           If valid, write NONE.
+
+        Reply ONLY in this exact JSON format, no extra text:
         {
-          "validImage": boolean,
-          "suggestedCategory": "string",
-          "generatedDescription": "string",
-          "rejectionReason": "string",
-          "confidence": number,
-          "matchesDescription": "string",
-          "matchesCategory": boolean
+          "validImage": true or false,
+          "matchesDescription": "YES" or "NO" or "PARTIAL",
+          "suggestedCategory": "category name",
+          "matchesCategory": true or false,
+          "rejectionReason": "reason or NONE",
+          "confidence": 0-100
         }
         """;
 
-    public GeminiValidationResult validateIssuePhoto(String imageUrl) {
-        log.info("Starting AI validation for image: {}", imageUrl);
+    public GeminiValidationResult validateIssuePhoto(
+            String imageUrl, String title, String description, String category) {
         try {
+            // ✅ Skip if key not configured
+            if (apiKey == null || apiKey.isBlank()
+                    || apiKey.equals("NOTSET")
+                    || apiKey.equals("YOUR_GEMINI_API_KEY_HERE")) {
+                log.warn("Gemini API key not configured — skipping AI validation");
+                return GeminiValidationResult.fallbackValid();
+            }
+
             byte[] imageBytes = downloadImage(imageUrl);
             if (imageBytes == null || imageBytes.length == 0) {
-                log.warn("Failed to download image. Falling back.");
+                log.warn("Could not download image: {}", imageUrl);
                 return GeminiValidationResult.fallbackValid();
             }
 
             String base64Image = Base64.getEncoder().encodeToString(imageBytes);
-            String mimeType    = "image/jpeg";
+            String mimeType    = detectMimeType(imageUrl);
+            String prompt      = String.format(PROMPT, title, description, category, category);
 
             String requestBody = """
                 {
                   "contents": [{
-                    "parts": [{"inline_data": {"mime_type": "%s", "data": "%s"}}, {"text": "%s"}]
+                    "parts": [
+                      { "inline_data": { "mime_type": "%s", "data": "%s" } },
+                      { "text": "%s" }
+                    ]
                   }],
-                  "generationConfig": {"temperature": 0.0, "maxOutputTokens": 400}
+                  "generationConfig": { "temperature": 0.1, "maxOutputTokens": 300 }
                 }
-                """.formatted(mimeType, base64Image, escapeJson(VALIDATION_PROMPT));
+                """.formatted(mimeType, base64Image, escapeJson(prompt));
 
-            HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(20)).build();
+            HttpClient client = HttpClient.newBuilder()
+                    .connectTimeout(Duration.ofSeconds(10)).build();
+
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(GEMINI_URL + apiKey))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                    .timeout(Duration.ofSeconds(20))
                     .build();
 
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() != 200) return GeminiValidationResult.fallbackValid();
+            HttpResponse<String> response = client.send(
+                    request, HttpResponse.BodyHandlers.ofString());
 
-            return parseGeminiResponse(response.body());
+            if (response.statusCode() == 429) {
+                log.warn("Gemini rate limit — allowing submission");
+                return GeminiValidationResult.fallbackValid();
+            }
+            if (response.statusCode() != 200) {
+                log.error("Gemini API error {}: {}", response.statusCode(), response.body());
+                return GeminiValidationResult.fallbackValid();
+            }
+
+            return parseResponse(response.body());
+
         } catch (Exception e) {
-            log.error("AI check failed: {}", e.getMessage());
-            return GeminiValidationResult.fallbackValid();
+            log.error("Gemini validation exception — using fallback: {}", e.getMessage());
+            return GeminiValidationResult.fallbackValid(); // ✅ Never throw 500
         }
     }
 
-    private GeminiValidationResult parseGeminiResponse(String responseBody) {
+    private GeminiValidationResult parseResponse(String body) {
         try {
             ObjectMapper mapper = new ObjectMapper();
-            JsonNode root = mapper.readTree(responseBody);
-            String text = root.path("candidates").get(0).path("content").path("parts").get(0).path("text").asText();
-            text = text.replaceAll("```json\\s*", "").replaceAll("```\\s*", "").trim();
-            JsonNode parsed = mapper.readTree(text);
+            JsonNode root = mapper.readTree(body);
+            String text = root.path("candidates").get(0)
+                    .path("content").path("parts").get(0)
+                    .path("text").asText();
 
+            text = text.replaceAll("```json\\s*", "")
+                       .replaceAll("```\\s*", "")
+                       .trim();
+
+            JsonNode parsed = mapper.readTree(text);
             return GeminiValidationResult.builder()
-                    .validImage(parsed.path("validImage").asBoolean(true))
+                    .validImage(parsed.path("validImage").asBoolean(false))
+                    .matchesDescription(parsed.path("matchesDescription").asText("NO"))
                     .suggestedCategory(parsed.path("suggestedCategory").asText("Other"))
-                    .generatedDescription(parsed.path("generatedDescription").asText("Issue reported."))
-                    .rejectionReason(parsed.path("rejectionReason").asText("NONE"))
-                    .confidence(parsed.path("confidence").asInt(100))
-                    .matchesDescription(parsed.path("matchesDescription").asText("YES"))
-                    .matchesCategory(parsed.path("matchesCategory").asBoolean(true))
+                    .matchesCategory(parsed.path("matchesCategory").asBoolean(false))
+                    .rejectionReason(parsed.path("rejectionReason").asText("Unknown failure"))
+                    .confidence(parsed.path("confidence").asInt(0))
                     .isFallback(false)
                     .build();
         } catch (Exception e) {
-            log.error("JSON parse failed: {}", e.getMessage());
+            log.error("Failed to parse Gemini response: {}", e.getMessage());
             return GeminiValidationResult.fallbackValid();
         }
     }
 
     private byte[] downloadImage(String url) {
         try {
-            HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
-            HttpRequest req = HttpRequest.newBuilder().uri(URI.create(url)).GET().build();
-            HttpResponse<byte[]> res = client.send(req, HttpResponse.BodyHandlers.ofByteArray());
+            HttpClient client = HttpClient.newBuilder()
+                    .connectTimeout(Duration.ofSeconds(8)).build();
+            HttpRequest req = HttpRequest.newBuilder()
+                    .uri(URI.create(url)).GET()
+                    .timeout(Duration.ofSeconds(12)).build();
+            HttpResponse<byte[]> res = client.send(
+                    req, HttpResponse.BodyHandlers.ofByteArray());
             return res.statusCode() == 200 ? res.body() : new byte[0];
-        } catch (Exception e) { return new byte[0]; }
+        } catch (Exception e) {
+            log.error("Image download failed: {}", e.getMessage());
+            return new byte[0];
+        }
+    }
+
+    private String detectMimeType(String url) {
+        String lower = url.toLowerCase();
+        if (lower.contains(".png"))  return "image/png";
+        if (lower.contains(".webp")) return "image/webp";
+        return "image/jpeg";
     }
 
     private String escapeJson(String text) {
-        return text.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
+        return text.replace("\\", "\\\\")
+                   .replace("\"", "\\\"")
+                   .replace("\n", "\\n")
+                   .replace("\r", "\\r")
+                   .replace("\t", "\\t");
     }
 
+    @lombok.Builder @lombok.Data
     public static class GeminiValidationResult {
         private boolean validImage;
+        private String  matchesDescription;
         private String  suggestedCategory;
-        private String  generatedDescription;
+        private boolean matchesCategory;
         private String  rejectionReason;
         private int     confidence;
-        private String  matchesDescription;
-        private boolean matchesCategory;
         private boolean isFallback;
-
-        public GeminiValidationResult() {}
-
-        public static GeminiValidationResultBuilder builder() { return new GeminiValidationResultBuilder(); }
-
-        public static class GeminiValidationResultBuilder {
-            private GeminiValidationResult res = new GeminiValidationResult();
-            public GeminiValidationResultBuilder validImage(boolean v) { res.validImage = v; return this; }
-            public GeminiValidationResultBuilder suggestedCategory(String s) { res.suggestedCategory = s; return this; }
-            public GeminiValidationResultBuilder generatedDescription(String d) { res.generatedDescription = d; return this; }
-            public GeminiValidationResultBuilder rejectionReason(String r) { res.rejectionReason = r; return this; }
-            public GeminiValidationResultBuilder confidence(int c) { res.confidence = c; return this; }
-            public GeminiValidationResultBuilder matchesDescription(String m) { res.matchesDescription = m; return this; }
-            public GeminiValidationResultBuilder matchesCategory(boolean m) { res.matchesCategory = m; return this; }
-            public GeminiValidationResultBuilder isFallback(boolean f) { res.isFallback = f; return this; }
-            public GeminiValidationResult build() { return res; }
-        }
 
         public static GeminiValidationResult fallbackValid() {
             return GeminiValidationResult.builder()
-                    .validImage(true).suggestedCategory("Other").generatedDescription("Reported.")
-                    .rejectionReason("NONE").confidence(100).matchesDescription("YES").matchesCategory(true)
+                    .validImage(true).matchesDescription("YES")
+                    .suggestedCategory("Other").matchesCategory(true).rejectionReason("NONE")
+                    .confidence(0)
                     .isFallback(true).build();
         }
 
-        public boolean isValidImage() { return validImage; }
-        public String getSuggestedCategory() { return suggestedCategory; }
-        public String getGeneratedDescription() { return generatedDescription; }
-        public String getRejectionReason() { return rejectionReason; }
-        public int getConfidence() { return confidence; }
-        public String getMatchesDescription() { return matchesDescription; }
-        public boolean matchesCategory() { return matchesCategory; }
-        public boolean isFallback() { return isFallback; }
+        public boolean isDescriptionMismatch() {
+            return "NO".equals(matchesDescription);
+        }
     }
 }
