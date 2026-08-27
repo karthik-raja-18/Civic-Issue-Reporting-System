@@ -4,6 +4,7 @@ import com.civic.issue.entity.Issue;
 import com.civic.issue.entity.User;
 import com.civic.issue.enums.IssueStatus;
 import com.civic.issue.enums.Zone;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -17,12 +18,9 @@ import java.util.Optional;
 public interface IssueRepository extends JpaRepository<Issue, Long> {
 
     // ── Core queries ──────────────────────────────────────────────────────────
-
-    // Sort by priority score descending so highest priority issues show first
     @Query("SELECT i FROM Issue i ORDER BY i.priorityScore DESC, i.createdAt DESC")
     List<Issue> findAllByOrderByPriorityScoreDesc();
 
-    // Fallback — original ordering for non-admin views
     List<Issue> findAllByOrderByCreatedAtDesc();
 
     List<Issue> findByCreatedByOrderByCreatedAtDesc(User user);
@@ -33,16 +31,13 @@ public interface IssueRepository extends JpaRepository<Issue, Long> {
 
     List<Issue> findByAssignedToIsNull();
 
-    // ── WhatsApp bot (fix9) ───────────────────────────────────────────────────
-    // Used by SMS/WhatsApp YES/NO reply handler
     Optional<Issue> findTopByCreatedByAndStatusOrderByCreatedAtDesc(
             User createdBy, IssueStatus status);
 
-    // ── SLA Scheduler ────────────────────────────────────────────────────────
     @Query("SELECT COUNT(i) FROM Issue i WHERE i.assignedTo = :user AND i.status NOT IN ('CLOSED')")
     long countActiveByAssignedTo(@Param("user") User user);
 
-    // ── Duplicate detection (fix5) ────────────────────────────────────────────
+    // ── Duplicate detection (Haversine fast path, fix5) ─────────────────────────
     @Query("""
         SELECT i FROM Issue i
         WHERE i.category = :category
@@ -60,4 +55,36 @@ public interface IssueRepository extends JpaRepository<Issue, Long> {
             @Param("lngMax")    Double lngMax,
             @Param("since")     LocalDateTime since
     );
+
+    // ── Semantic duplicate detection (fix10) — NO category filter, wider net,
+    //    embedding similarity does the precision work in the service layer ──
+    @Query("""
+        SELECT i FROM Issue i
+        WHERE i.latitude  BETWEEN :latMin AND :latMax
+          AND i.longitude BETWEEN :lngMin AND :lngMax
+          AND i.createdAt >= :since
+          AND i.status <> 'CLOSED'
+          AND i.embedding IS NOT NULL
+        ORDER BY i.createdAt DESC
+        """)
+    List<Issue> findOpenCandidatesNearLocation(
+            @Param("latMin") Double latMin,
+            @Param("latMax") Double latMax,
+            @Param("lngMin") Double lngMin,
+            @Param("lngMax") Double lngMax,
+            @Param("since")  LocalDateTime since
+    );
+
+    // ── RAG retrieval (fix10) ────────────────────────────────────────────────
+    // Pulls all CLOSED issues that have an embedding, for the chat assistant
+    // to brute-force cosine-similarity search over. Fine at this scale;
+    // swap for pgvector/FAISS once the table grows large.
+    List<Issue> findAllByStatusAndEmbeddingIsNotNull(IssueStatus status);
+
+    List<Issue> findAllByEmbeddingIsNotNull();
+
+    // ── Embedding backfill scheduler (fix10) ────────────────────────────────
+    @Query(value = "SELECT * FROM issues WHERE embedding IS NULL ORDER BY id ASC LIMIT :limit",
+           nativeQuery = true)
+    List<Issue> findTopNByEmbeddingIsNull(@Param("limit") int limit);
 }

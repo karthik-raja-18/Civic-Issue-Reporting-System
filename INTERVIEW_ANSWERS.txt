@@ -1,0 +1,417 @@
+# 📝 Interview Answers - Civic Issue Reporting System
+
+---
+
+## Basic Questions
+
+### 1. Tell me about yourself.
+I'm a full-stack developer with a passion for building applications that solve real-world problems. I have experience with React, Spring Boot, and modern web technologies. I recently built a Civic Issue Reporting System that allows citizens to report civic issues like potholes and broken streetlights, and track their resolution by local authorities. I enjoy working on projects that have a positive impact on communities and I'm always eager to learn new technologies.
+
+### 2. Tell me about your project.
+I built a Civic Issue Reporting System called CivicPulse. It's a full-stack web application where citizens can report civic issues such as potholes, broken streetlights, garbage accumulation, and infrastructure problems. Users can submit issues with photos and GPS location, track the progress of their reports, and receive notifications when the status changes. The system has a React frontend and Spring Boot backend with MySQL database. It includes role-based access control with three user roles: regular users, regional admins who manage specific geographical zones, and super admins with full system access. The system also features WhatsApp bot integration for reporting issues via WhatsApp, OAuth2 login with Google and GitHub, image storage via Cloudinary, and an analytics dashboard to track zone performance and resolution times.
+
+### 3. What was your role in this project?
+I was responsible for the full-stack development of this project. I designed the entire system architecture, created the database schema, implemented the REST API using Spring Boot, built the React frontend with Tailwind CSS, integrated JWT authentication and OAuth2, implemented role-based access control, added Cloudinary for image storage, built the WhatsApp bot using Twilio, and created the analytics dashboard. I handled everything from initial design to deployment, including security implementation, API design, and user experience considerations.
+
+### 4. Why did you choose this project?
+I chose this project because it addresses a real problem in my community. People often struggle to report civic issues and don't have visibility into when or if they'll be resolved. I wanted to build something that bridges the gap between citizens and local authorities, making the process transparent and efficient. Additionally, this project allowed me to work with a comprehensive tech stack including React, Spring Boot, JWT authentication, role-based access control, and third-party integrations like Cloudinary and Twilio, which helped me strengthen my full-stack development skills.
+
+---
+
+## Technical Questions
+
+### 5. Explain the architecture of your project.
+The project follows a standard three-tier architecture: presentation layer, business logic layer, and data layer. The frontend is a React single-page application built with Vite for fast development and optimized builds. It uses React Router for navigation, Tailwind CSS for styling, and Axios for API calls with a JWT interceptor. The backend is a Spring Boot REST API following the Controller-Service-Repository pattern. Controllers handle HTTP requests and responses, Services contain business logic, and Repositories handle database operations using JPA/Hibernate. The database is MySQL with Hibernate ORM for object-relational mapping. Security is handled by Spring Security with JWT authentication and role-based access control. The system also integrates with Cloudinary for image storage and Twilio for WhatsApp notifications. Communication between frontend and backend is via RESTful JSON APIs over HTTP.
+
+### 6. What technologies did you use and why?
+For the frontend, I chose React 18 because it's the most popular and well-supported frontend library with a large ecosystem. Vite for the build tool because it provides fast hot module replacement and optimized production builds. Tailwind CSS for styling because it allows rapid UI development with utility classes. React Router for client-side routing. Axios for HTTP requests because it has excellent interceptor support for JWT handling.
+
+For the backend, I chose Spring Boot 3.3 with Java 21 because Spring Boot is the industry standard for enterprise Java applications, provides excellent security features, and has great integration with databases and other technologies. Java 21 LTS for long-term support and modern language features. MySQL for the database because it's widely used, reliable, and has excellent JPA support. Spring Security for authentication and authorization because it's the most comprehensive security framework for Java applications.
+ 
+For integrations, I chose Cloudinary for image storage because it provides CDN delivery, automatic optimization, and easy API integration. Twilio for WhatsApp because it's the most reliable communication API with good documentation.
+
+### 7. How does authentication work in your system?
+I use JWT (JSON Web Tokens) for stateless authentication. When a user registers or logs in via the /api/auth/register or /api/auth/login endpoints, the backend validates their credentials using BCrypt password hashing. If valid, the backend generates a JWT token using the JwtUtil class. The token contains the user's email, role, and expiration time (24 hours). The token is returned to the frontend in the response body. The frontend stores this token in localStorage using the AuthContext. An Axios interceptor in axiosConfig.js automatically attaches the token to every outgoing request as an Authorization header in the format "Bearer <token>". On the backend, a JwtAuthenticationFilter extends OncePerRequestFilter and intercepts each request. It extracts the JWT from the Authorization header, validates the signature and expiration using JwtUtil, extracts the user's email, loads the user details using CustomUserDetailsService, and if valid, populates the Spring Security context with the user's authentication and authorities. If the token is invalid or expired, the filter logs an error and the request proceeds without authentication, which will be caught by the security configuration and return a 401 error.
+
+### 8. How do you handle authorization and role-based access?
+I implement role-based access control using Spring Security's method-level and endpoint-level security. I have three roles defined in the RoleType enum: USER, REGIONAL_ADMIN, and ADMIN. In the SecurityConfig class, I configure endpoint-level security using requestMatchers(). For example, status update endpoints require hasAnyRole("ADMIN", "REGIONAL_ADMIN"), delete endpoints require hasRole("ADMIN"), and most issue endpoints require authentication for any role. I also use @PreAuthorize annotations in controllers for additional granularity. For regional admins, I enforce zone-based authorization in the service layer - when a regional admin tries to access or modify an issue, I check if the issue's zone matches the admin's assigned zone. This ensures regional admins can only manage issues within their geographical area. The roles are stored in the users table and loaded into the user's authorities during authentication, which Spring Security uses for authorization checks.
+
+### 9. Explain the JWT implementation in detail.
+The JWT implementation consists of three main components: JwtUtil class, JwtAuthenticationFilter, and the authentication flow. JwtUtil handles token generation and validation. It uses the HS256 algorithm with a 256-bit secret key stored in application.properties. When generating a token, it sets claims including the subject (user's email), issued at time, expiration time, and the user's role. The token is signed with the secret key. For validation, JwtUtil extracts the email from the token, checks if it's expired using the expiration claim, and validates the signature using the secret key. JwtAuthenticationFilter extends OncePerRequestFilter and runs before each request. It extracts the JWT from the Authorization header (removing "Bearer " prefix), validates it using JwtUtil, loads the user's details from the database using CustomUserDetailsService, and if the token is valid, creates a UsernamePasswordAuthenticationToken with the user's authorities and sets it in the SecurityContextHolder. This makes the authenticated user available throughout the request for authorization checks. The filter handles exceptions gracefully by logging errors and allowing the request to proceed, which will then be caught by Spring Security's authorization rules.
+
+### 10. How do you handle password security?
+I handle password security using BCrypt hashing. When a user registers, their password is hashed using BCryptPasswordEncoder before storing in the database. BCrypt is a one-way hashing algorithm that automatically handles salting, which means each password hash is unique even if the same password is used multiple times. The default strength factor is 10, which provides a good balance between security and performance. During login, the user's input password is hashed using the same BCrypt algorithm and compared with the stored hash. BCrypt's built-in salting prevents rainbow table attacks and the computational cost makes brute-force attacks impractical. I never store passwords in plain text, and passwords are never logged or exposed in error messages. The JWT secret key is also configurable via environment variable and should be a strong 256-bit key in production.
+
+---
+
+## Database Questions
+
+### 11. What is your database schema?
+The database has 5 main tables: users, issues, comments, notifications, and issue_upvotes. The users table stores user information including id, name, email, password (BCrypt hashed), role (USER/ADMIN/REGIONAL_ADMIN), zone (NORTH/SOUTH/EAST/WEST/CENTRAL), oauth_provider, oauth_id, avatar_url, and phone. The issues table stores issue details including id, title, description, category, status (PENDING/IN_PROGRESS/RESOLVED/CLOSED/REOPENED), image_url, resolved_image_url, reopen_note, latitude, longitude, upvote_count, priority_score, resolved_at, closed_at, created_at, created_by_id (foreign key to users), zone, and assigned_to_id (foreign key to users). The comments table stores user comments with id, text, created_at, user_id, and issue_id. The notifications table stores user notifications with id, message, created_at, user_id, and read status. The issue_upvotes table tracks upvotes with id, user_id, and issue_id. Relationships: User has many Issues (created_by_id), Issue belongs to User (creator), Issue can be assigned to User (assigned_to_id), Issue has many Comments, Issue has many Upvotes, User has many Notifications. I use JPA annotations like @Entity, @Table, @Id, @GeneratedValue, @Column, @ManyToOne, @OneToMany, @JoinColumn, and @Enumerated to map these relationships.
+
+### 12. How do you handle database relationships?
+I use JPA/Hibernate for ORM and handle relationships using JPA annotations. For one-to-many relationships like User to Issues, I use @OneToMany(mappedBy = "createdBy", cascade = CascadeType.ALL, orphanRemoval = true) on the User side and @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "created_by_id") on the Issue side. I use FetchType.LAZY for performance - related entities are loaded only when accessed. Cascade operations like CascadeType.ALL ensure that when a parent entity is saved or deleted, child entities are also saved or deleted. OrphanRemoval ensures that when a child entity is removed from the collection, it's automatically deleted from the database. For many-to-one relationships, I use @ManyToOne with @JoinColumn to specify the foreign key column. I also use @Enumerated(EnumType.STRING) to store enum values as strings in the database rather than ordinal numbers, which makes the database more readable and resilient to enum reordering.
+
+### 13. What is the difference between lazy and eager loading?
+Lazy loading means related entities are not loaded from the database until they're actually accessed in the code. This improves performance by avoiding unnecessary database queries. For example, when loading an Issue, the Comments collection is not loaded until we call issue.getComments(). Eager loading means related entities are loaded immediately with the parent entity, which can lead to the N+1 query problem if not careful. In my project, I use FetchType.LAZY for most relationships to optimize performance. For example, when fetching a list of issues, I don't want to load all comments and upvotes for each issue unless specifically needed. I only use eager loading when I know the related data will always be needed. Lazy loading requires an active Hibernate session, so I'm careful about accessing lazy-loaded relationships outside of transaction boundaries.
+
+### 14. How do you optimize database queries?
+I optimize database queries in several ways: First, I use database indexing on frequently queried columns like email (unique index), status, zone, created_by_id, and created_at. This speeds up WHERE clause filtering and JOIN operations. Second, I use lazy loading to avoid loading unnecessary related data. Third, I use pagination for large result sets instead of loading all records at once. Fourth, I use JPA's @Query annotation with custom JPQL queries for complex queries that would be inefficient with default repository methods. Fifth, I use DTOs (Data Transfer Objects) to transfer only the necessary data between layers instead of entire entities, which reduces the amount of data transferred. Sixth, I use connection pooling via HikariCP (Spring Boot's default) to reuse database connections. Seventh, I avoid N+1 query problems by using JOIN FETCH in JPQL when I need related data. Eighth, I use appropriate fetch strategies based on the use case - lazy loading by default, eager loading when necessary.
+
+---
+
+## Frontend Questions
+
+### 15. How do you manage state in your React application?
+I use a combination of React Context API and local component state. For global state like authentication (user info, token, login/logout functions), I use AuthContext which wraps the entire application. This provides authentication state to all components without prop drilling. For component-specific state like form inputs, loading states, and UI toggles, I use React's useState hook. For server state (data fetched from APIs), I store it in component state using useState after fetching with Axios. I also use URL state via React Router's query parameters for filtering - for example, ?mine=true to show only the user's issues, or ?status=PENDING to filter by status. This approach keeps the state management simple and scalable for this application's needs without requiring additional libraries like Redux.
+
+### 16. Explain the component structure of your frontend.
+The frontend follows a hierarchical component structure. App.jsx is the root component that sets up React Router with routes for different pages. AuthContext wraps the entire app to provide authentication state. ProtectedRoute and AdminRoute are wrapper components that check authentication and role before rendering child components. The main pages are Login, Register, Dashboard (issue list), CreateIssue (issue submission form), IssueDetails (single issue with comments), AdminDashboard (admin management interface), and Notifications. Reusable components include Navbar (navigation with role-aware links), IssueCard (displays individual issue), StatusBadge (shows issue status with color coding), Spinner (loading indicator), and AlertMessage (displays success/error messages). The API layer is organized in the api folder with separate files for authApi, issueApi, and notificationApi, each containing Axios calls for specific endpoints. axiosConfig.js sets up the Axios instance with JWT interceptor.
+
+### 17. How do you handle API calls in React?
+I use Axios for API calls organized in separate API modules. In axiosConfig.js, I create an Axios instance and add an interceptor that automatically attaches the JWT token from localStorage to every request as an Authorization header. The interceptor also handles 401 errors by clearing the token and redirecting to the login page. I have separate API files: authApi.js for authentication endpoints (login, register), issueApi.js for issue-related endpoints (CRUD, comments, status updates), and notificationApi.js for notification endpoints. Each API file exports functions that make specific API calls. For example, issueApi.js exports functions like getIssues(), createIssue(data), updateIssueStatus(id, status), etc. These functions are called from React components, often inside useEffect hooks for data fetching on component mount, or in event handlers for user actions. I use async/await for handling promises and try-catch blocks for error handling.
+
+### 18. How do you handle routing in your application?
+I use React Router DOM for client-side routing. In App.jsx, I set up the BrowserRouter with various routes. I use Route components to define path-component mappings. For example, "/" maps to Dashboard, "/login" maps to Login, "/register" maps to Register, "/issues/:id" maps to IssueDetails (with a dynamic id parameter), and "/admin" maps to AdminDashboard. I use ProtectedRoute wrapper for routes that require authentication - it checks if the user is logged in via AuthContext, and if not, redirects to the login page. Similarly, AdminRoute wrapper checks if the user has ADMIN role before allowing access. I use the useNavigate hook for programmatic navigation, such as redirecting after login or when a user is unauthorized. I also use useLocation and useParams hooks to access route parameters and query strings for filtering and data display.
+
+---
+
+## Backend Questions
+
+### 19. Explain the Spring Boot architecture in your project.
+My Spring Boot application follows the standard layered architecture: Controller layer, Service layer, Repository layer, and Entity layer. The Controller layer (AuthController, IssueController, NotificationController, etc.) handles HTTP requests and responses. Controllers receive requests, validate input using DTOs, call appropriate service methods, and return responses wrapped in ApiResponse objects for consistent response format. The Service layer (AuthService, IssueService, NotificationService and their implementations) contains business logic. Services perform validations, coordinate multiple repository calls, implement business rules, and handle transactions. The Repository layer (UserRepository, IssueRepository, etc.) extends JpaRepository and handles database operations using JPA/Hibernate. Repositories provide CRUD operations and custom query methods. The Entity layer (User, Issue, Comment, Notification) represents database tables with JPA annotations. Configuration classes (SecurityConfig, CloudinaryConfig) set up beans and framework configurations. Filters (JwtAuthenticationFilter) intercept requests for cross-cutting concerns like authentication. Exception handling is centralized in GlobalExceptionHandler using @RestControllerAdvice.
+
+### 20. What is the purpose of the Service layer?
+The Service layer serves as the business logic layer between Controllers and Repositories. Its purpose is to encapsulate business rules, coordinate multiple repository operations, handle transactions, and provide a clean separation of concerns. Controllers should be thin and only handle HTTP concerns - receiving requests, validating input, and returning responses. Services contain the actual business logic - for example, when creating an issue, the service validates the data, sets default values like status and zone, assigns the issue to the appropriate regional admin, saves the issue to the database, and creates a notification if needed. Services also handle complex operations that involve multiple entities or multiple repository calls. For example, when updating an issue status, the service updates the issue, creates a notification for the issue creator, and might send a WhatsApp message. Services are also where I implement authorization checks beyond what's in the SecurityConfig - for example, ensuring a regional admin can only modify issues in their zone. This separation makes the code more testable, maintainable, and reusable.
+
+### 21. How do you handle exceptions in your application?
+I handle exceptions using a combination of custom exceptions and a global exception handler. I created custom exception classes: ResourceNotFoundException for when a requested resource doesn't exist, DuplicateResourceException for when trying to create a duplicate resource (like an existing email), and UnauthorizedException for authorization failures. These exceptions are thrown in service methods when business rules are violated. I have a GlobalExceptionHandler class annotated with @RestControllerAdvice that catches these exceptions globally. It has methods annotated with @ExceptionHandler for each exception type. These methods return a consistent ApiResponse object with appropriate HTTP status codes - 404 for ResourceNotFoundException, 409 for DuplicateResourceException, 401 for UnauthorizedException, and 500 for unexpected exceptions. This ensures the frontend always receives a predictable response format regardless of what went wrong. I also use Spring's @Valid annotation with validation annotations on DTOs to automatically validate input and return 400 Bad Request with validation error details.
+
+### 22. Explain the Controller-Service-Repository pattern.
+The Controller-Service-Repository pattern is a layered architecture that separates concerns. Controllers handle HTTP-specific concerns: receiving requests, extracting parameters, validating input using DTOs, calling service methods, and returning HTTP responses. Services handle business logic: implementing business rules, coordinating multiple repository calls, performing validations, handling transactions, and orchestrating complex operations. Repositories handle data access: CRUD operations, custom queries, and database interactions using JPA/Hibernate. Entities represent database tables. This separation provides several benefits: Controllers are thin and focused on HTTP, Services contain reusable business logic, Repositories abstract database operations, and each layer can be tested independently. For example, in my IssueController, the createIssue endpoint receives an IssueRequest DTO, validates it, calls issueService.createIssue(), and returns the created issue wrapped in ApiResponse. The IssueServiceImpl.createIssue() method validates the business rules, sets default values, saves the issue using issueRepository, and returns the result. The IssueRepository extends JpaRepository and provides database operations.
+
+---
+
+## Security Questions
+
+### 23. What security measures have you implemented?
+I implemented several security measures: First, JWT-based stateless authentication with 24-hour token expiration to prevent session hijacking. Second, BCrypt password hashing to securely store passwords. Third, role-based access control with three roles (USER, REGIONAL_ADMIN, ADMIN) and endpoint-level security using Spring Security. Fourth, zone-based authorization for regional admins to ensure they can only access issues in their assigned zone. Fifth, input validation using Spring Boot Validation annotations on DTOs to prevent invalid data. Sixth, SQL injection prevention through JPA's parameterized queries - I never concatenate user input into SQL strings. Seventh, XSS prevention through React's automatic escaping of user-generated content. Eighth, CORS configuration to control which domains can access the API. Ninth, OAuth2 integration with secure token handling. Tenth, sensitive data like JWT secret and database credentials are stored in environment variables, not in code. Eleventh, HTTPS enforcement in production (can be configured in Spring Security). Twelfth, rate limiting can be added to prevent abuse.
+
+### 24. How do you prevent SQL injection?
+I prevent SQL injection primarily through JPA/Hibernate's use of parameterized queries. When I use JPA repository methods like findByEmail() or custom @Query annotations, Hibernate automatically generates parameterized SQL queries where user input is treated as data, not executable code. For example, when I call userRepository.findByEmail(email), Hibernate generates SQL like "SELECT * FROM users WHERE email = ?" with the email value as a parameter, not concatenated into the string. This makes SQL injection impossible. I never use native SQL queries with string concatenation. If I need to use native SQL for complex queries, I use JPA's parameter binding with named parameters or positional parameters. Additionally, input validation on DTOs ensures that only valid data reaches the database layer. The combination of parameterized queries, input validation, and ORM abstraction provides strong protection against SQL injection attacks.
+
+### 25. How do you handle CORS?
+I handle CORS (Cross-Origin Resource Sharing) in the SecurityConfig class. I create a CorsConfigurationSource bean that defines CORS rules. In development, I allow all origins using config.setAllowedOrigins(List.of("*")) for convenience. I also allow all HTTP methods (GET, POST, PUT, DELETE, OPTIONS) and all headers. This configuration is registered for all paths using UrlBasedCorsConfigurationSource. On the frontend, Vite's proxy configuration in vite.config.js proxies API requests from the frontend dev server (port 3000) to the backend (port 8080) during development, which also helps avoid CORS issues. In production, I would restrict the allowed origins to only the actual frontend domain(s) for better security. The CORS configuration ensures that the browser allows cross-origin requests from the frontend to the backend API.
+
+### 26. What is the difference between authentication and authorization?
+Authentication is the process of verifying who a user is - confirming their identity. In my system, authentication happens when a user logs in with email/password or via OAuth2. The system validates their credentials and issues a JWT token. Authorization is the process of determining what an authenticated user is allowed to do - checking their permissions. In my system, authorization happens on every request after authentication. Spring Security checks the user's roles (USER, ADMIN, REGIONAL_ADMIN) against the required permissions for each endpoint. For example, a USER can create issues but can't delete them, while an ADMIN can delete issues. Authentication answers "Who are you?" and authorization answers "What are you allowed to do?" Authentication is a prerequisite for authorization - you must be authenticated before you can be authorized.
+
+---
+
+## Feature-Specific Questions
+
+### 27. How does the zone-based management work?
+The zone-based management system divides Coimbatore into 5 geographical zones: NORTH (Mettupalayam, Annur, Karamadai, Thudiyalur, Saravanampatti), SOUTH (Pollachi, Valparai, Anaimalai, Kinathukadavu, Aliyar), EAST (Sulur, Palladam, Avinashi border, Tiruppur border), WEST (Madukkarai, Thondamuthur, Coimbatore West), and CENTRAL (Gandhipuram, RS Puram, Peelamedu, Singanallur, Ukkadam). When a user submits an issue with GPS coordinates, the system automatically determines the zone based on the latitude and longitude using a coordinate-based zone mapping algorithm. Each regional admin is assigned to a specific zone stored in their user record. Issues are automatically routed to the appropriate regional admin based on the issue's zone. Regional admins can only view and manage issues in their assigned zone - this is enforced in the service layer by checking if the issue's zone matches the admin's zone before allowing modifications. Super admins can manage all zones. This system ensures efficient issue distribution, accountability, and faster resolution times as regional admins are familiar with their specific areas.
+
+### 28. Explain the issue lifecycle.
+Issues go through a 5-state lifecycle: PENDING → IN_PROGRESS → RESOLVED → CLOSED, with a REOPENED state if resolution is rejected. When a citizen first submits an issue, it starts in PENDING status, waiting for an admin to start working on it. When a regional admin begins working on the issue, they update it to IN_PROGRESS. When the admin completes the work, they upload a proof photo and change the status to RESOLVED. At this point, the issue creator receives a notification and can review the resolution. If the creator is satisfied, they confirm the resolution and the status changes to CLOSED - the issue is fully resolved. If the creator is not satisfied (for example, the proof photo doesn't show the actual fix), they can reject the resolution by providing a reason, which changes the status to REOPENED. The issue then goes back to IN_PROGRESS and the cycle repeats until the creator confirms and it reaches CLOSED. This lifecycle ensures transparency and citizen involvement in the resolution process.
+
+### 29. How do you handle image uploads?
+I handle image uploads using Cloudinary for cloud storage. When a user uploads an image from the frontend, it's sent as multipart/form-data to the /api/issues/upload-image endpoint. The backend receives the file using @RequestParam("file") MultipartFile file. I then use Cloudinary's Java SDK to upload the file. I configure Cloudinary with API credentials from environment variables in CloudinaryConfig. The upload method takes the file, uploads it to Cloudinary, and returns a secure URL. This URL is stored in the database as the image_url field. For resolved issues, admins upload proof photos which are stored as resolved_image_url. Using Cloudinary provides several benefits: automatic image optimization, CDN delivery for fast loading, multiple format generation, and unlimited storage. I don't store files locally on the server, which avoids storage management issues and enables horizontal scaling. The frontend displays images using these URLs directly from Cloudinary's CDN.
+
+### 30. How does the WhatsApp bot integration work?
+The WhatsApp bot integration uses Twilio's WhatsApp Business API. When a citizen sends a message to the configured WhatsApp number, Twilio sends a webhook POST request to my /api/bot/webhook endpoint. This endpoint is public (no authentication required) as specified in SecurityConfig. In the WhatsAppBotController, I receive the message body, sender's phone number, and any attached media. I parse the message to extract issue details like title, description, and location. If an image is attached, I upload it to Cloudinary using the same upload logic as the web interface. I then create an issue in the database using the IssueService, associating it with the user if their phone number matches an existing user account, or creating a guest issue if not. After creating the issue, I send a confirmation message back to the user via Twilio's API. When the issue status changes, the system can send automated WhatsApp notifications to the reporter. This makes issue reporting accessible to users without internet access or smartphones, and provides a convenient alternative to the web interface.
+
+### 31. How does OAuth2 integration work in your system?
+I implemented OAuth2 integration for Google and GitHub login using Spring Security's OAuth2 support. In SecurityConfig, I configure oauth2Login() with a custom userInfoEndpoint that uses CustomOAuth2UserService. This service extends DefaultOAuth2UserService and overrides the loadUser() method to handle OAuth user information. When a user clicks "Login with Google" or "Login with GitHub", they're redirected to the OAuth provider's authorization page. After the user approves, the provider redirects back with an authorization code. Spring Security exchanges this code for an access token and retrieves user information. My CustomOAuth2UserService processes this information - it checks if a user with the OAuth ID already exists. If yes, it logs them in. If no, it creates a new user account with the OAuth provider, OAuth ID, name, and email from the provider. The OAuth2AuthenticationSuccessHandler generates a JWT token and returns it to the frontend, similar to regular login. The OAuth2AuthenticationFailureHandler handles errors if OAuth fails. I also have OAuth2ActionStoreFilter to track OAuth actions for security. This allows users to log in without remembering passwords and provides a seamless authentication experience.
+
+### 32. Explain the upvote system and priority scoring.
+The upvote system allows citizens to upvote issues to indicate their importance and community support. When a user clicks the upvote button on an issue, the frontend calls the upvote API endpoint. The backend checks if the user has already upvoted this issue (by querying the issue_upvotes table). If not, it creates a new entry in issue_upvotes with the user_id and issue_id, and increments the issue's upvote_count. If the user has already upvoted, it removes the entry and decrements the count (toggle behavior). The priority_score is a calculated field that combines upvotes with the age of the issue to prioritize older, highly-supported issues. The formula considers both the number of upvotes and how long the issue has been pending - newer issues with many upvotes and older issues with fewer upvotes can both achieve high priority scores. This score is displayed to admins and can be used to sort issues in the dashboard, helping them identify high-impact community issues that need attention. The upvote count and priority score are stored in the issues table and updated whenever upvotes change.
+
+---
+
+## Problem-Solving Questions
+
+### 33. What was the most challenging bug you fixed?
+One challenging bug I encountered was with JWT token expiration handling. Initially, when a token expired, the backend would return a 401 error, but the frontend wouldn't handle it gracefully - the user would stay on the page with broken functionality. I fixed this by adding an Axios interceptor in axiosConfig.js that specifically catches 401 errors. When a 401 is received, the interceptor clears the JWT token from localStorage, clears the user state from AuthContext, and redirects the user to the login page. This ensures a smooth user experience when tokens expire. Another challenge was zone detection from GPS coordinates - I had to implement a coordinate-based mapping algorithm that accurately determines which zone a coordinate falls within. I solved this by defining bounding boxes for each zone and checking if the coordinates fall within those bounds. For edge cases near zone boundaries, I added a small buffer zone to ensure consistent classification.
+
+### 34. How did you handle performance issues?
+I addressed performance issues through several optimizations. For the frontend, I implemented code splitting using React's lazy loading for routes, so the initial bundle size is smaller and pages load on demand. I also used Vite's optimized build process which minifies JavaScript and generates efficient chunks. For the backend, I added database indexing on frequently queried columns like email, status, zone, and created_at. This significantly sped up query performance. I used lazy loading for JPA relationships to avoid loading unnecessary data - for example, when fetching a list of issues, comments and upvotes aren't loaded unless specifically needed. I implemented pagination for large result sets instead of loading all records at once. I used Cloudinary's CDN for image delivery, which serves images from edge locations close to users. I also used connection pooling via HikariCP (Spring Boot's default) to reuse database connections and reduce overhead. These optimizations collectively improved the application's response time and scalability.
+
+### 35. What would you do differently if you could start over?
+If I could start over, I would implement comprehensive unit and integration testing from the beginning. Initially, I focused on getting features working and didn't invest enough in automated testing. Now I realize that having a good test suite would have caught bugs earlier and made refactoring safer. I would also implement caching using Redis for frequently accessed data like issue lists and user profiles to reduce database load. I would add rate limiting to prevent abuse of the API. I would implement WebSocket support for real-time notifications instead of polling, which would provide instant updates and reduce server load. I would also add more comprehensive logging and monitoring using Spring Boot Actuator to track application health and performance in production. Additionally, I would use Docker from the start for containerization, which would make deployment and environment consistency easier. Finally, I would implement a proper CI/CD pipeline with GitHub Actions for automated testing and deployment.
+
+### 36. How do you handle concurrent updates to the same issue?
+To handle concurrent updates to the same issue, I would use JPA's optimistic locking mechanism. This involves adding a @Version field to the Issue entity, which is an integer that increments with each update. When two users try to update the same issue simultaneously, JPA checks the version number. If the version in the database doesn't match the version in the entity being updated, it throws an OptimisticLockException. I can catch this exception in my service layer and handle it appropriately - for example, by returning a conflict error to the frontend with a message that the issue was modified by another user, and prompting the user to refresh and try again. This approach is suitable for web applications where concurrent updates are relatively rare. For high-contention scenarios, I could use pessimistic locking with @Lock(LockModeType.PESSIMISTIC_WRITE) which locks the record in the database for the duration of the transaction, preventing other transactions from modifying it. However, this can reduce concurrency and should be used judiciously.
+
+---
+
+## Scalability Questions
+
+### 37. How would you scale your application?
+To scale the application, I would implement several strategies. First, I would containerize both frontend and backend using Docker for consistent deployment and easy orchestration. Then I would use Kubernetes for container orchestration, allowing automatic scaling based on load. For the database, I would implement read replicas to handle read-heavy workloads - writes go to the primary database, reads are distributed across replicas. I would also implement database sharding by zone, since issues are naturally partitioned by geographical zone - each zone could have its own database shard. For caching, I would add Redis to cache frequently accessed data like issue lists, user profiles, and notification counts. For the backend, I would implement horizontal scaling by running multiple instances behind a load balancer. Since JWT is stateless, this works seamlessly without session affinity requirements. For the frontend, I would serve static assets from a CDN like CloudFront or Cloudflare. For notifications, I would replace polling with WebSocket connections or use a message queue like RabbitMQ or Kafka for async processing. I would also implement rate limiting to prevent abuse and ensure fair resource allocation.
+
+### 38. How would you handle millions of users?
+Handling millions of users requires architectural changes. First, I would move to a microservices architecture, splitting the application into separate services like auth-service, issue-service, notification-service, and analytics-service. Each service can scale independently. I would use a distributed message queue like Kafka or RabbitMQ for asynchronous communication between services. For the database, I would implement sharding - partitioning data across multiple database servers based on user ID or zone. I would use a distributed cache like Redis Cluster for caching across multiple nodes. I would implement CDN for static assets and use a content delivery network for API responses where possible. I would add comprehensive monitoring with tools like Prometheus and Grafana to track performance and identify bottlenecks. I would implement circuit breakers using Resilience4j to handle service failures gracefully. I would also implement database connection pooling optimization and consider using a connection pooler like PgBouncer. For authentication, I might move to a centralized auth service like Keycloak. The key is to identify bottlenecks through monitoring and scale those specific components.
+
+### 39. How would you improve the performance of your application?
+To improve performance, I would implement several optimizations. First, add Redis caching for frequently accessed data - issue lists, user profiles, zone statistics. Cache invalidation would happen on data updates. Second, implement database query optimization - add composite indexes on commonly queried column combinations, use EXPLAIN to analyze slow queries, and optimize N+1 query problems using JOIN FETCH. Third, implement response compression using Gzip for API responses. Fourth, use HTTP/2 for multiplexing requests and reducing latency. Fifth, implement frontend performance optimizations - code splitting, lazy loading images, optimizing bundle size with tree shaking, using service workers for offline capability. Sixth, implement database read replicas to distribute read load. Seventh, use a CDN for static assets and image delivery. Eighth, implement pagination and infinite scrolling instead of loading all data at once. Ninth, use WebSocket for real-time updates instead of polling. Tenth, implement background job processing for heavy operations like analytics calculations using Spring's @Async or a message queue.
+
+### 40. How would you implement caching?
+I would implement caching using Redis as a distributed cache. For the backend, I would use Spring Cache abstraction with @Cacheable, @CachePut, and @CacheEvict annotations. For example, frequently accessed data like the list of issues in a zone could be cached with @Cacheable(value = "issues", key = "#zone"). When data is updated, I would use @CacheEvict to invalidate the cache. For user-specific data like notifications, I would use the user ID as the cache key. I would also implement cache warming - pre-populating the cache with frequently accessed data during application startup. For the frontend, I would implement browser caching using appropriate Cache-Control headers for static assets. I would also use React's built-in optimization like memoization with React.memo for expensive component renders. For API responses that don't change often, I would implement HTTP caching with ETags. I would set appropriate TTL (time-to-live) values for different types of data - shorter TTL for frequently changing data like issue status, longer TTL for relatively static data like user profiles. I would also implement cache invalidation strategies - time-based, event-based, or manual invalidation depending on the use case.
+
+---
+
+## Testing Questions
+
+### 41. How do you test your application?
+Currently, I test the application manually through the web interface and using Postman for API testing. I test each endpoint with valid and invalid inputs to ensure proper error handling. I test authentication and authorization by logging in with different user roles and verifying access controls. I test the issue lifecycle by creating issues, updating statuses, and verifying notifications. However, I recognize that this manual testing approach has limitations and I plan to implement automated testing. For the backend, I would write unit tests using JUnit and Mockito to test service layer logic in isolation. I would write integration tests using @SpringBootTest and MockMvc to test API endpoints with a real database context. For the frontend, I would use React Testing Library and Jest to test component rendering, user interactions, and API calls. I would also implement end-to-end testing using Cypress or Playwright to test complete user flows like registering, creating an issue, and tracking its resolution.
+
+### 42. What testing tools have you used?
+For manual testing, I use Postman to test API endpoints with different inputs and verify responses. I use the browser's developer tools to inspect network requests, debug JavaScript, and test responsive design. For the backend, I'm familiar with JUnit for unit testing and Mockito for mocking dependencies. I've used Spring Boot's @SpringBootTest for integration testing. For the frontend, I'm familiar with Jest as the test runner and React Testing Library for component testing. I've also used Cypress for end-to-end testing in other projects. For database testing, I've used H2 in-memory database for test isolation. I'm also familiar with testing concepts like test-driven development (TDD), behavior-driven development (BDD), and the testing pyramid (unit tests at the base, integration tests in the middle, end-to-end tests at the top).
+
+### 43. How do you write unit tests for your backend?
+For backend unit tests, I would use JUnit 5 and Mockito. I would test the service layer in isolation by mocking the repository dependencies. For example, to test IssueService.createIssue(), I would mock IssueRepository to return a saved issue and verify that the service calls the repository with the correct parameters. I would use @ExtendWith(MockitoExtension.class) to enable Mockito and @Mock to create mock dependencies. I would use @InjectMocks to inject mocks into the service being tested. I would write tests for happy paths (successful operations) and edge cases (invalid input, resource not found, unauthorized access). I would use assertions like assertEquals to verify expected results. I would also test exception scenarios using assertThrows. For validation logic, I would test with both valid and invalid DTOs. I would aim for high test coverage of business logic while keeping tests fast and isolated. For integration tests, I would use @SpringBootTest with an embedded database to test the full stack including controllers, services, and repositories.
+
+### 44. How do you test your React components?
+For React component testing, I would use Jest as the test runner and React Testing Library for rendering and interacting with components. I would write tests that verify components render correctly with given props, respond to user interactions like clicks and form submissions, and display the expected output. For example, for the IssueCard component, I would test that it displays the issue title, description, and status badge correctly. I would test that clicking the upvote button calls the appropriate function. I would use render() to mount components, fireEvent to simulate user events, and screen queries like getByText and getByRole to assert on the rendered output. I would also test async operations like API calls using waitFor and findBy queries. I would avoid testing implementation details and focus on testing behavior from the user's perspective. For components that use React Router, I would use MemoryRouter to provide routing context in tests. For components that use AuthContext, I would wrap them in a custom test provider with mocked context.
+
+---
+
+## Deployment Questions
+
+### 45. How do you deploy your application?
+For deployment, I would use a containerized approach. First, I would create a Dockerfile for the backend that uses a multi-stage build - first stage builds the application with Maven, second stage uses a lightweight JRE image to run the JAR. For the frontend, I would create a Dockerfile that builds the React app with npm run build and serves it with Nginx. I would use docker-compose to orchestrate the containers locally, defining services for the backend, frontend, database, and Redis. For production deployment, I would push the Docker images to a container registry like Docker Hub or AWS ECR. Then I would deploy to a cloud platform like AWS using ECS (Elastic Container Service) or EKS (Elastic Kubernetes Service). I would use a load balancer to distribute traffic across multiple backend instances. For the database, I would use a managed service like AWS RDS for MySQL. For file storage, Cloudinary is already cloud-hosted. I would use environment variables for configuration like database credentials, JWT secret, and API keys. I would also set up SSL/TLS certificates for HTTPS using a service like AWS Certificate Manager or Let's Encrypt.
+
+### 46. What is your CI/CD process?
+Currently, I don't have a fully automated CI/CD pipeline, but I would implement one using GitHub Actions. The pipeline would have stages: build, test, and deploy. On every push to the main branch, GitHub Actions would trigger. First, it would run the build - for the backend, mvn clean install, for the frontend, npm install and npm run build. Then it would run tests - unit tests for both backend and frontend, integration tests for the backend. If tests pass, it would build Docker images and push them to a container registry. For deployment to staging, this would happen automatically on every successful build. For production deployment, I would require manual approval or use a separate branch like production. The pipeline would also run code quality checks like ESLint for frontend and Checkstyle for backend. I would use environment-specific configuration files for staging and production. The CI/CD pipeline would ensure that only tested and validated code gets deployed, reducing the risk of bugs in production.
+
+### 47. How do you handle environment configuration?
+I handle environment configuration using Spring Boot's externalized configuration support. For sensitive data like database passwords, JWT secrets, and API keys, I use environment variables. In application.properties, I reference these variables using ${VAR_NAME:default_value} syntax. For example, the JWT secret is configured as app.jwt.secret=${JWT_SECRET:default-dev-secret}. In production, the JWT_SECRET environment variable would be set to a strong 256-bit key. For the frontend, I use .env files with Vite - variables prefixed with VITE_ are available in the frontend code. I have .env.example as a template, and actual .env files are gitignored. Different environments (development, staging, production) have different .env files with appropriate values. For Docker deployments, I pass environment variables in the docker-compose.yml file or Kubernetes manifests. This approach keeps sensitive data out of version control and allows easy configuration changes without code modifications.
+
+### 48. How do you monitor your application in production?
+For production monitoring, I would implement several layers of monitoring. First, I would use Spring Boot Actuator which provides health checks, metrics, and information endpoints out of the box. I would expose the /actuator/health endpoint for health checks and /actuator/metrics for application metrics. I would integrate this with a monitoring system like Prometheus to scrape metrics and Grafana for visualization dashboards. I would monitor key metrics like request rate, response time, error rate, database connection pool usage, and JVM metrics. I would also implement structured logging using Logback or Log4j2 with JSON format for easy parsing. Logs would be sent to a centralized logging system like ELK Stack (Elasticsearch, Logstash, Kibana) or CloudWatch Logs. I would set up alerts for critical conditions like high error rates, slow response times, or database connection failures. For the frontend, I would use error tracking like Sentry to capture JavaScript errors and performance monitoring like Web Vitals. I would also implement uptime monitoring using a service like Pingdom or UptimeRobot to alert if the application becomes unavailable.
+
+---
+
+## Behavioral Questions
+
+### 49. Tell me about a time you worked in a team.
+While this project was primarily individual, I've worked in teams on academic projects and hackathons. In one hackathon, I worked with three other developers to build a real-time collaboration tool. We divided responsibilities - I handled the backend API and WebSocket implementation, another team member handled the React frontend, another focused on the UI/UX design, and the fourth handled documentation and presentation. We used Git for version control with a clear branching strategy - each feature had its own branch, and we merged to main after code reviews. We communicated daily through stand-up meetings and used Slack for ongoing communication. We faced a challenge when our WebSocket implementation had latency issues, but we worked together to debug it - the frontend team helped identify the client-side issue while I optimized the server-side code. We successfully delivered the project on time and won second place. This experience taught me the importance of clear communication, code reviews, and leveraging each team member's strengths.
+
+### 50. How do you handle tight deadlines?
+When facing tight deadlines, I prioritize ruthlessly using the MoSCoW method - Must have, Should have, Could have, Won't have. I focus on delivering the core Must-have features first and defer non-essential features. I break down the remaining work into small, manageable tasks and estimate time for each. I communicate early if I think a deadline is unrealistic, proposing alternatives like reducing scope or extending the timeline. I work in focused time blocks using techniques like the Pomodoro technique to maintain productivity. I also look for opportunities to reuse existing solutions - libraries, templates, or code from previous projects rather than building from scratch. For this Civic Issue Reporting project, when I had a tight deadline for a demo, I focused on the core user flow (register, create issue, view dashboard) and postponed advanced features like analytics and WhatsApp bot to later iterations. This allowed me to deliver a working prototype on time while planning to add features incrementally.
+
+### 51. How do you stay updated with new technologies?
+I stay updated with new technologies through several channels. I follow tech blogs and publications like Medium, Dev.to, and Hacker News for articles on emerging technologies and best practices. I subscribe to newsletters like Java Weekly, React Newsletter, and Spring Boot Weekly for curated content. I follow influential developers and companies on Twitter and LinkedIn to see what they're working on. I watch conference talks and tutorials on YouTube and platforms like Udemy. I participate in online communities like Stack Overflow, Reddit's r/programming and r/webdev, and Discord servers to discuss technologies and learn from others. I also build side projects to experiment with new technologies - for example, I learned about GraphQL by building a small project with it. I try to balance learning new things with deepening my existing skills - I don't chase every new trend but focus on technologies that are relevant to my goals and have proven value.
+
+### 52. What are your strengths and weaknesses?
+One of my strengths is problem-solving - I enjoy breaking down complex problems into smaller, manageable pieces and finding elegant solutions. For example, in this project, I solved the zone-based routing challenge by implementing a coordinate mapping algorithm. Another strength is my ability to learn quickly - when I needed to integrate Cloudinary and Twilio, I read their documentation and had working integrations within a few days. I'm also detail-oriented, which helps me write clean, maintainable code and catch bugs early. A weakness I'm working on is that sometimes I get too focused on perfection and spend too much time optimizing code that's already good enough. I've learned to recognize when "good enough" is sufficient and move on to other tasks. Another weakness is that I tend to work independently and sometimes hesitate to ask for help. I'm improving this by being more proactive about seeking feedback and collaborating with others, recognizing that different perspectives can lead to better solutions.
+
+---
+
+## Advanced Questions
+
+### 53. What is the difference between monolithic and microservices architecture?
+Monolithic architecture is a traditional approach where the entire application is built as a single unit - all components (authentication, issue management, notifications, etc.) are part of one codebase, deployed together, and share the same database. This is simpler to develop, test, and deploy initially, but can become difficult to maintain and scale as the application grows. Changes to one part require redeploying the entire application, and a bug in one module can potentially bring down the whole system.
+
+Microservices architecture breaks the application into small, independent services that communicate via APIs. Each service has its own codebase, database, and can be deployed independently. For example, in a microservices version of my project, I might have separate services for authentication, issue management, notifications, and analytics. This allows each service to scale independently based on its load, use different technologies if needed, and be developed by different teams. However, it adds complexity - you need to handle service discovery, inter-service communication, distributed transactions, and monitoring across services. Microservices are better for large, complex applications with multiple teams, while monolithic is often better for smaller applications or early-stage projects.
+
+### 54. How would you convert your application to microservices?
+To convert my application to microservices, I would first identify bounded contexts - distinct business domains that can be separated. Based on my project, I would create these services: auth-service (user management, authentication, JWT generation), issue-service (issue CRUD, comments, upvotes), notification-service (creating and sending notifications), analytics-service (calculating statistics and performance metrics), and possibly whatsapp-service (handling WhatsApp bot logic). Each service would have its own database to avoid tight coupling. Services would communicate via REST APIs or message queues like RabbitMQ/Kafka for async operations. I would implement an API Gateway using Spring Cloud Gateway to handle routing, authentication, and rate limiting. I would use service discovery like Eureka or Consul for services to find each other. I would implement distributed tracing using Spring Cloud Sleuth and Zipkin to track requests across services. I would use Spring Cloud Config for centralized configuration management. The migration would be gradual - I would start by extracting the auth-service since it's a clear boundary, then extract other services one by one, ensuring each migration maintains backward compatibility.
+
+### 55. Explain the concept of eventual consistency.
+Eventual consistency is a consistency model used in distributed systems where, given enough time, all replicas of data will converge to the same state, but they might be inconsistent temporarily. This contrasts with strong consistency where all replicas always have the same data at the same time. Eventual consistency is often used in distributed databases and microservices because it provides better availability and partition tolerance at the cost of temporary inconsistency.
+
+In my project, if I were to use eventual consistency, it might apply to the notification system. When an issue status is updated, the notification might not be created instantly across all replicas. There could be a slight delay before the notification appears to the user. However, within a short time (seconds or milliseconds), all replicas would have the notification. This is acceptable for notifications where a small delay doesn't significantly impact the user experience. Eventual consistency is achieved through techniques like asynchronous replication, conflict resolution strategies (last-write-wins, vector clocks), and read repair. In a microservices architecture with separate databases, eventual consistency is often the norm - when data needs to be synchronized across services, it's done asynchronously via message queues, accepting temporary inconsistency for better performance and availability.
+
+### 56. What is CAP theorem and how does it apply to your system?
+CAP theorem states that in a distributed system, you can only have two out of three guarantees: Consistency (all nodes see the same data at the same time), Availability (every request receives a response), and Partition Tolerance (system continues operating despite network partitions). You must choose between CP (consistency + partition tolerance) or AP (availability + partition tolerance) when a partition occurs.
+
+My current system uses a single MySQL database, so CAP theorem doesn't directly apply - it's a centralized system. However, if I were to scale it using a distributed database or microservices, I would need to consider CAP trade-offs. For a civic issue reporting system, I would likely choose AP (availability + partition tolerance) over CP. Availability is crucial - citizens should always be able to report issues even if some database nodes are down. Temporary inconsistency is acceptable - if an issue doesn't immediately appear on all replicas, it's not critical as long as it eventually appears. For example, if the database is partitioned, users should still be able to submit issues (availability), even if those issues take a few seconds to propagate to all nodes (eventual consistency). However, for authentication, I might prioritize consistency - I wouldn't want a user to be able to log in on one node while being logged out on another. So different parts of the system might have different CAP priorities.
+
+### 57. How would you implement real-time notifications?
+Currently, my system uses polling - the frontend periodically requests notifications from the backend. To implement real-time notifications, I would use WebSockets. In the backend, I would add Spring Boot's WebSocket support using the spring-boot-starter-websocket dependency. I would create a WebSocket configuration class that sets up a message broker (like STOMP over WebSocket). I would create a WebSocket endpoint at /ws-notifications. When a user connects, they would subscribe to a topic specific to their user ID (e.g., /user/{userId}/notifications). In the NotificationService, when a new notification is created, instead of just saving it to the database, I would also send it to the WebSocket topic using the SimpMessagingTemplate. On the frontend, I would use a WebSocket client library like SockJS with STOMP to connect to the WebSocket endpoint and subscribe to the notification topic. When a message arrives, I would update the UI immediately without needing to poll. This would provide instant notification updates and reduce server load compared to polling. For mobile apps, I could also implement push notifications using Firebase Cloud Messaging (FCM) or Apple Push Notification Service (APNs).
+
+### 58. What is the difference between REST and GraphQL?
+REST (Representational State Transfer) is an architectural style for APIs that uses HTTP methods (GET, POST, PUT, DELETE) and resources identified by URLs. Each endpoint returns a fixed data structure. For example, GET /api/issues/{id} always returns the issue with its comments. REST is simple, cacheable, and works well for standard CRUD operations. However, it can lead to over-fetching (getting more data than needed) or under-fetching (needing multiple requests to get all needed data).
+
+GraphQL is a query language for APIs that allows clients to request exactly the data they need in a single query. Instead of multiple endpoints, there's typically a single endpoint (e.g., /graphql). The client sends a query specifying the fields they want, and the server returns only those fields. For example, a GraphQL query could request only the issue title and status without comments, avoiding over-fetching. GraphQL also supports mutations for creating/updating data and subscriptions for real-time updates. However, GraphQL is more complex to implement, requires a schema definition, and caching is more challenging than REST.
+
+For my project, REST is a good fit because the data structure is relatively stable and predictable. However, if I had a mobile app that needed flexible data fetching (sometimes needing just issue titles, sometimes needing full details with comments), GraphQL might be beneficial to reduce data transfer and improve performance.
+
+### 59. How would you implement rate limiting?
+I would implement rate limiting to prevent API abuse and ensure fair resource allocation. In Spring Boot, I could use the Bucket4j library or Spring Cloud Gateway's built-in rate limiting. I would implement rate limiting at multiple levels: IP-based rate limiting to prevent a single IP from making too many requests, user-based rate limiting using the JWT token to prevent a user from exceeding their quota, and endpoint-specific rate limiting (e.g., stricter limits on expensive operations like image uploads). I would use a sliding window algorithm or token bucket algorithm to track request counts. The rate limit data would be stored in Redis for distributed systems or in memory for single-instance deployments. When a request exceeds the limit, I would return HTTP 429 (Too Many Requests) with a Retry-After header indicating when the client can try again. I would also implement rate limiting headers like X-RateLimit-Limit, X-RateLimit-Remaining, and X-RateLimit-Reset to inform clients of their limits. For the frontend, I would implement exponential backoff when receiving 429 errors - wait and retry with increasing delays.
+
+### 60. Explain the concept of database sharding.
+Database sharding is a horizontal scaling technique where a large database is partitioned into smaller, more manageable pieces called shards, each stored on a separate database server. Unlike vertical scaling (adding more resources to a single server) or read replicas (copying data to multiple servers), sharding splits the data itself across servers.
+
+In my project, a natural sharding key would be the zone. Since issues are already partitioned by geographical zone (NORTH, SOUTH, EAST, WEST, CENTRAL), I could shard the database by zone - each zone's issues would be stored on a separate database shard. Queries for issues in a specific zone would only hit that zone's shard, distributing the load. User data might be sharded by user ID or region. The shard key is crucial - it should distribute data evenly and align with access patterns. Sharding improves write scalability since writes are distributed across shards, but it adds complexity: cross-shard queries become difficult, transactions spanning multiple shards are challenging, and rebalancing shards when data grows unevenly is complex. Sharding is typically considered when a single database becomes a bottleneck despite other optimizations like indexing, caching, and read replicas.
+
+---
+
+## Code-Style Questions
+
+### 61. Write a SQL query to get all issues in the NORTH zone.
+```sql
+SELECT i.id, i.title, i.description, i.category, i.status, i.created_at, u.name as created_by_name
+FROM issues i
+JOIN users u ON i.created_by_id = u.id
+WHERE i.zone = 'NORTH'
+ORDER BY i.created_at DESC;
+```
+
+### 62. Write a Java method to validate a JWT token.
+```java
+public boolean validateToken(String token) {
+    try {
+        String email = jwtUtil.extractEmail(token);
+        if (email == null || SecurityContextHolder.getContext().getAuthentication() != null) {
+            return false;
+        }
+        UserDetails userDetails = userDetailsService.loadUserByUsername(email);
+        return jwtUtil.validateToken(token, userDetails);
+    } catch (Exception e) {
+        log.error("Token validation failed: {}", e.getMessage());
+        return false;
+    }
+}
+```
+
+### 63. Write a React component to display an issue card.
+```jsx
+import React from 'react';
+import { formatDistanceToNow } from 'date-fns';
+
+const IssueCard = ({ issue, onUpvote, onComment }) => {
+  const statusColors = {
+    PENDING: 'bg-yellow-100 text-yellow-800',
+    IN_PROGRESS: 'bg-blue-100 text-blue-800',
+    RESOLVED: 'bg-green-100 text-green-800',
+    CLOSED: 'bg-gray-100 text-gray-800',
+    REOPENED: 'bg-red-100 text-red-800'
+  };
+
+  return (
+    <div className="bg-white rounded-lg shadow-md p-4 mb-4 hover:shadow-lg transition-shadow">
+      <div className="flex justify-between items-start mb-2">
+        <h3 className="text-lg font-semibold text-gray-800">{issue.title}</h3>
+        <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColors[issue.status]}`}>
+          {issue.status}
+        </span>
+      </div>
+      <p className="text-gray-600 text-sm mb-3 line-clamp-2">{issue.description}</p>
+      <div className="flex justify-between items-center text-sm text-gray-500">
+        <span>{issue.category}</span>
+        <span>{formatDistanceToNow(new Date(issue.createdAt), { addSuffix: true })}</span>
+      </div>
+      <div className="flex gap-2 mt-3">
+        <button 
+          onClick={() => onUpvote(issue.id)}
+          className="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded text-sm"
+        >
+          👍 {issue.upvoteCount}
+        </button>
+        <button 
+          onClick={() => onComment(issue.id)}
+          className="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded text-sm"
+        >
+          💬 {issue.comments.length}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+export default IssueCard;
+```
+
+### 64. Write a Spring Boot endpoint to create an issue.
+```java
+@RestController
+@RequestMapping("/api/issues")
+@RequiredArgsConstructor
+public class IssueController {
+
+    private final IssueService issueService;
+
+    @PostMapping
+    public ResponseEntity<ApiResponse<IssueResponse>> createIssue(
+            @Valid @RequestBody IssueRequest request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        
+        String email = userDetails.getUsername();
+        IssueResponse issue = issueService.createIssue(request, email);
+        
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success("Issue created successfully", issue));
+    }
+}
+
+// Service implementation
+@Service
+@RequiredArgsConstructor
+public class IssueServiceImpl implements IssueService {
+
+    private final IssueRepository issueRepository;
+    private final UserRepository userRepository;
+    private final NotificationService notificationService;
+
+    @Override
+    @Transactional
+    public IssueResponse createIssue(IssueRequest request, String email) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        
+        Zone zone = determineZoneFromCoordinates(request.getLatitude(), request.getLongitude());
+        
+        Issue issue = Issue.builder()
+                .title(request.getTitle())
+                .description(request.getDescription())
+                .category(request.getCategory())
+                .imageUrl(request.getImageUrl())
+                .latitude(request.getLatitude())
+                .longitude(request.getLongitude())
+                .createdBy(user)
+                .zone(zone)
+                .status(IssueStatus.PENDING)
+                .build();
+        
+        Issue savedIssue = issueRepository.save(issue);
+        
+        // Assign to regional admin if available
+        assignToRegionalAdmin(savedIssue, zone);
+        
+        return mapToResponse(savedIssue);
+    }
+}
+```
+
+---
+
+## Scenario-Based Questions
+
+### 65. A user reports they can't log in. How do you debug this?
+First, I would check the browser console for any JavaScript errors. Then. I would verify the network tab to see if the login request is being sent and what the response is. If the request isn't being sent, there might be a frontend issue with the form or API call. If the request is sent but failing, I would check the response status and body. A 401 error suggests invalid credentials, while a 500 error suggests a server-side issue. I would check the backend logs for any exceptions during login processing. I would verify the user exists in the database and their password hash is correct. I would check if the JWT secret is properly configured. I would also check if BCrypt is working correctly by testing password hashing and verification. If the issue is with OAuth2 login, I would check the OAuth provider configuration, callback URLs, and token handling. I would also check if there are any CORS issues preventing the request. Finally, I would test with Postman to isolate whether the issue is with the frontend or backend.
+
+### 66. The application is slow. How do you investigate?
+I would start by measuring where the slowness is occurring - frontend or backend. For the frontend, I would use Chrome DevTools Performance tab to record and analyze JavaScript execution, rendering, and network activity. I would check if large bundles are being loaded, if there are long-running JavaScript tasks, or if images are not optimized. For the backend, I would use Spring Boot Actuator metrics to check response times, database query times, and JVM performance. I would enable SQL logging to see which queries are slow and use EXPLAIN to analyze their execution plans. I would check if there are N+1 query problems by monitoring the number of database queries per request. I would check database connection pool usage - if connections are exhausted, it could cause slowness. I would also check if there are memory issues causing garbage collection pauses. I would use profiling tools like VisualVM or YourKit to identify CPU and memory hotspots. I would also check if external services like Cloudinary or Twilio are slow. Based on the findings, I would implement appropriate optimizations - caching, indexing, query optimization, code optimization, or scaling resources.
+
+### 67. Image uploads are failing. How do you troubleshoot?
+First, I would check the browser console and network tab to see what error is occurring. If the request isn't being sent, there might be a frontend issue with the file input or FormData handling. If the request is being sent but failing, I would check the response status and error message. A 413 error suggests the file is too large - I would check the Spring Boot multipart max file size configuration. A 500 error suggests a server-side issue. I would check the backend logs for any exceptions during file processing. I would verify that Cloudinary credentials are correctly configured and valid. I would test the Cloudinary upload independently using their API documentation or a simple test. I would check if there are network connectivity issues between the server and Cloudinary. I would also check file format and size restrictions - Cloudinary has limits on file types and sizes. I would verify that the multipart/form-data is being correctly formatted. I would also check if there are any firewall or proxy issues blocking the upload to Cloudinary. Finally, I would test with a small, simple image file to isolate whether the issue is with specific files or the upload mechanism itself.
+
+### 68. Users are reporting they see each other's data. How do you fix this?
+This is a critical security issue that I would address immediately. First, I would verify the report by testing with different user accounts to reproduce the issue. I would check if the problem is with authentication (users are logged in as each other) or authorization (users can access data they shouldn't). I would review the SecurityConfig to ensure endpoints are properly protected with authentication requirements. I would check if the JWT token validation is working correctly in JwtAuthenticationFilter. I would verify that user-specific queries are filtering by the correct user ID - for example, when fetching "my issues", the query should include "WHERE created_by_id = ?" with the authenticated user's ID. I would check if there are any endpoints that return all data without proper filtering. I would review the service layer to ensure authorization checks are in place, especially for regional admins to ensure they can only access their zone's data. I would also check if there are any SQL injection vulnerabilities that could bypass authorization. I would add comprehensive logging to track who is accessing what data for auditing. Once I identify and fix the root cause, I would audit all endpoints to ensure similar issues don't exist elsewhere. I would also add automated tests to prevent regression of this issue.
+
+---
+
+## Final Tips
+
+After writing your answers:
+1. **Practice out loud** - Say your answers to yourself or a friend
+2. **Time yourself** - Keep answers to 2-3 minutes each
+3. **Be specific** - Use actual file names, class names, and technologies
+4. **Show enthusiasm** - Let your passion for the project come through
+5. **Be honest** - If you don't know something, say so and explain how you'd learn
+
+**Good luck! You've got this! 🚀**

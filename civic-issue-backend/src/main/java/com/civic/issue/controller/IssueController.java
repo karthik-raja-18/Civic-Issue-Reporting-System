@@ -162,4 +162,18 @@ public class IssueController {
         boolean voted = upvoteService.hasUpvoted(id, userDetails.getUsername());
         return ResponseEntity.ok(ApiResponse.success(java.util.Map.of("hasUpvoted", voted)));
     }
+    @PutMapping("/{id}/correct-category")
+    @PreAuthorize("hasAnyRole('ADMIN','REGIONAL_ADMIN')")
+    public ResponseEntity<ApiResponse<IssueResponse>> correctCategory(
+            @PathVariable Long id,
+            @Valid @RequestBody CorrectCategoryRequest request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+
+        IssueResponse res = issueService.correctCategory(
+                id, request.getNewCategory(), request.getAiConfidenceAtSuggestion(),
+                userDetails.getUsername());
+
+        return ResponseEntity.ok(ApiResponse.success("Category corrected", res));
+    }
+
 }

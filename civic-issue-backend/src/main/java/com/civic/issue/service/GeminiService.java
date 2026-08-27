@@ -21,7 +21,7 @@ public class GeminiService {
     private String apiKey;
 
     private static final String GEMINI_URL =
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=";
+        "https://generativelanguage.googleapis.com/v1/models/gemini-3.5-flash:generateContent?key=";
 
     private static final String PROMPT = """
         You are a civic issue validator for a government complaint system in Coimbatore, India.

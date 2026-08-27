@@ -70,18 +70,24 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
 
                         // ── Public endpoints ──────────────────────────────────────
-                        .requestMatchers(
-                                "/api/auth/**",
-                                "/oauth2/**",
-                                "/login/oauth2/**",
-                                "/api/bot/**"        // ✅ Twilio webhooks are public
-                        ).permitAll()
-
-                        // ── Issue read — all authenticated users ──────────────────
-                        .requestMatchers(HttpMethod.GET,
-                                "/api/issues", "/api/issues/**").authenticated()
-
-                        // ── Image upload — all authenticated users ────────────────
+//                        .requestMatchers(
+//                                "/api/auth/**",
+//                                "/oauth2/**",
+//                                "/login/oauth2/**",
+//                                "/api/bot/**"        // ✅ Twilio webhooks are public
+//                        ).permitAll()
+//
+//                        // ── Issue read — all authenticated users ──────────────────
+//                        .requestMatchers(HttpMethod.GET,
+//                                "/api/issues", "/api/issues/**").authenticated()
+                                .requestMatchers(
+                                        "/api/auth/**",
+                                        "/oauth2/**",
+                                        "/login/oauth2/**",
+                                        "/api/bot/**",
+                                        "/actuator/health"
+                                ).permitAll()
+                                // ── Image upload — all authenticated users ────────────────
                         .requestMatchers(HttpMethod.POST,
                                 "/api/issues/upload-image").authenticated()  // ✅ NEW
 
@@ -111,6 +117,7 @@ public class SecurityConfig {
                         // ── Everything else requires auth ──────────────────────────
                         .anyRequest().authenticated()
                 )
+
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(jwtAuthenticationFilter,
                         UsernamePasswordAuthenticationFilter.class)

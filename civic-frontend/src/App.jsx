@@ -7,6 +7,7 @@ import BottomTabBar         from './components/BottomTabBar'
 import ProtectedRoute       from './components/ProtectedRoute'
 import AdminRoute           from './components/AdminRoute'
 import RegionalAdminRoute   from './components/RegionalAdminRoute'
+import ChatWidget           from './components/ChatWidget'
 
 // Lazy load pages for mobile performance
 const Landing            = lazy(() => import('./pages/Landing'))
@@ -32,7 +33,7 @@ const PageLoader = () => (
 )
 
 export default function App() {
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, user } = useAuth()
 
   return (
     <div className="min-h-screen flex flex-col bg-light-bg dark:bg-dark-bg text-light-primary dark:text-dark-primary transition-colors duration-300">
@@ -70,6 +71,9 @@ export default function App() {
       </main>
 
       {isAuthenticated && <BottomTabBar />}
+
+      {/* ✅ Ask CivicPulse chat widget, for logged-in users */}
+      {user && <ChatWidget />}
     </div>
   )
 }

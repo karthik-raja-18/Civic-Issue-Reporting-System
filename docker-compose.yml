@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: civic-mysql
+    restart: always
+    environment:
+      MYSQL_DATABASE: civic_db
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-karthikraja2502}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  backend:
+    build:
+      context: ./civic-issue-backend
+      dockerfile: Dockerfile
+    container_name: civic-backend
+    restart: always
+    ports:
+      - "8080:8080"
+    depends_on:
+      - mysql
+    environment:
+      - DB_URL=jdbc:mysql://mysql:3306/civic_db?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true
+      - DB_USERNAME=root
+      - DB_PASSWORD=${DB_PASSWORD:-karthikraja2502}
+      - JWT_SECRET=${JWT_SECRET:-YOUR_JWT_SECRET}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-YOUR_GOOGLE_API_KEY}
+      - CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME:-YOUR_CLOUDINARY_CLOUD_NAME}
+      - CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY:-YOUR_CLOUDINARY_API_KEY}
+      - CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET:-YOUR_CLOUDINARY_API_SECRET}
+      - RECAPTCHA_SECRET_KEY=${RECAPTCHA_SECRET_KEY:-YOUR_RECAPTCHA_SECRET_KEY}
+      - FRONTEND_URL=http://localhost:3000
+
+  frontend:
+    build:
+      context: ./civic-frontend
+      dockerfile: Dockerfile
+    container_name: civic-frontend
+    restart: always
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  mysql_data:

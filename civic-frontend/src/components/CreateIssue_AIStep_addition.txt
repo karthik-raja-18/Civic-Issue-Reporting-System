@@ -1,0 +1,76 @@
+// ── Update the AI Verify step (step === 3) in CreateIssue.jsx ──────────────
+// Add this block right after the "AI suggested category" section, to show
+// the classifier's confidence score and let it auto-apply when confident.
+
+{/* AI suggested category — NOW WITH CONFIDENCE SCORE (fix10) */}
+{aiResult.suggestedCategory && aiResult.suggestedCategory !== form.category && (
+  <div className="mt-3 p-2 bg-ink-800/60 rounded-lg">
+    <p className="text-xs text-ink-400 flex items-center gap-1.5 flex-wrap">
+      🤖 AI suggests category:
+      <button onClick={() => setForm(f => ({ ...f, category: aiResult.suggestedCategory }))}
+        className="text-civic-400 font-semibold hover:underline">
+        {aiResult.suggestedCategory}
+      </button>
+
+      {/* ✅ NEW — confidence badge from the multi-class classifier */}
+      {aiResult.categoryConfidence != null && (
+        <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded
+          ${aiResult.categoryConfidence >= 70
+            ? 'bg-civic-500/15 text-civic-400'
+            : aiResult.categoryConfidence >= 40
+              ? 'bg-amber-500/15 text-amber-400'
+              : 'bg-red-500/15 text-red-400'}`}>
+          {aiResult.categoryConfidence}% confident
+        </span>
+      )}
+
+      <span className="text-ink-600">(click to apply)</span>
+    </p>
+  </div>
+)}
+
+{/* ── Duplicate warning — NOW SHOWS SEMANTIC SIMILARITY % too (fix10) ── */}
+{aiResult.duplicateFound && !skipDuplicate && (
+  <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4">
+    <div className="flex items-start gap-3 mb-3">
+      <span className="text-2xl">⚠️</span>
+      <div>
+        <p className="text-amber-400 font-semibold text-sm">Possible Duplicate Found</p>
+        <p className="text-ink-300 text-sm mt-1">
+          A similar <strong className="text-amber-300">{form.category}</strong> issue was
+          already reported <strong className="text-amber-300">{aiResult.duplicateDistanceMetres}m</strong> away.
+        </p>
+        <p className="text-ink-400 text-xs mt-1">
+          "{aiResult.duplicateIssueTitle}"
+        </p>
+
+        {/* ✅ NEW — shown only when matched via semantic similarity, not
+             just exact-category GPS match. This is the visible proof that
+             the embedding-based duplicate detection caught something the
+             old category-exact check would have missed. */}
+        {aiResult.duplicateSimilarityPercent != null && (
+          <div className="mt-2 flex items-center gap-1.5">
+            <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded
+                             bg-purple-500/15 text-purple-400">
+              🧠 {aiResult.duplicateSimilarityPercent}% semantic match
+            </span>
+            <span className="text-ink-500 text-[10px]">
+              (matched by meaning, not just category)
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+    <div className="flex gap-2 flex-wrap">
+      <a href={`/issues/${aiResult.duplicateIssueId}`} target="_blank" rel="noreferrer"
+        className="btn-secondary text-xs px-3 py-1.5">
+        👁 View Existing Issue
+      </a>
+      <button onClick={() => setSkipDuplicate(true)}
+        className="text-xs px-3 py-1.5 rounded-lg border border-ink-600 text-ink-300
+                   hover:border-white/30 transition-all">
+        ✏️ Mine is Different — Submit Anyway
+      </button>
+    </div>
+  </div>
+)}

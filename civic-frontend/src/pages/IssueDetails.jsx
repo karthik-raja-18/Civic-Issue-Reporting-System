@@ -6,6 +6,7 @@ import { timeAgo, extractError } from '../utils/helpers'
 import StatusBadge from '../components/StatusBadge'
 import Spinner from '../components/Spinner'
 import AlertMessage from '../components/AlertMessage'
+import CategoryCorrector from '../components/CategoryCorrector'
 
 const ZONE_COLORS = {
   NORTH: 'text-blue-500', SOUTH: 'text-amber-500',
@@ -205,15 +206,25 @@ export default function IssueDetails() {
 
                <div className="bg-light-surface dark:bg-dark-surface border border-light-border dark:border-dark-border rounded-3xl overflow-hidden shadow-sm">
                   <div className="p-5 sm:p-8 lg:p-10 border-b border-light-border/50 dark:border-dark-border/50">
-                     <div className="flex flex-wrap items-center gap-3 mb-6">
-                        <span className="bg-brand-blue/10 dark:bg-blue-900/20 text-brand-blue dark:text-blue-400 px-3 py-1 rounded-full text-[10px] sm:text-[11px] font-bold uppercase tracking-widest border border-brand-blue/20">
-                           {issue.category}
-                        </span>
-                        <StatusBadge status={issue.status} />
-                        {issue.zone && issue.zone !== 'UNASSIGNED' && (
-                           <span className={`text-[10px] sm:text-[11px] font-bold uppercase tracking-widest ${ZONE_COLORS[issue.zone] || ''}`}>
-                              {issue.zone} Zone
+                     <div className="flex flex-col gap-4 mb-6">
+                        <div className="flex flex-wrap items-center gap-3">
+                           <span className="bg-brand-blue/10 dark:bg-blue-900/20 text-brand-blue dark:text-blue-400 px-3 py-1 rounded-full text-[10px] sm:text-[11px] font-bold uppercase tracking-widest border border-brand-blue/20">
+                              {issue.category}
                            </span>
+                           <StatusBadge status={issue.status} />
+                           {issue.zone && issue.zone !== 'UNASSIGNED' && (
+                              <span className={`text-[10px] sm:text-[11px] font-bold uppercase tracking-widest ${ZONE_COLORS[issue.zone] || ''}`}>
+                                 {issue.zone} Zone
+                              </span>
+                           )}
+                        </div>
+                        {canModerate && (
+                           <div className="max-w-md">
+                              <CategoryCorrector
+                                 issue={issue}
+                                 onCorrected={(updated) => setIssue(updated)}
+                              />
+                           </div>
                         )}
                      </div>
                      <h1 className="text-2xl sm:text-3xl lg:text-4xl font-display font-black text-light-primary dark:text-dark-primary tracking-tight leading-[1.2] sm:leading-[1.1] mb-6">

@@ -20,6 +20,10 @@ public interface IssueService {
 
     IssueResponse updateIssueStatus(Long id, UpdateStatusRequest request, String userEmail);
 
+    // fix10 — admin overrides AI-suggested category, logs feedback for training data
+    IssueResponse correctCategory(Long id, String newCategory,
+                                   Integer aiConfidenceAtSuggestion, String userEmail);
+
     IssueResponse resolveIssue(Long id, ResolveIssueRequest request, String userEmail);
 
     IssueResponse confirmResolution(Long id, String userEmail);
@@ -31,7 +35,4 @@ public interface IssueService {
     CommentResponse addComment(Long issueId, CommentRequest request, String userEmail);
 
     IssueResponse findMostRecentResolvedIssue(String userEmail);
-
-    // ✅ New: Upvote functionality
-    IssueResponse upvoteIssue(Long id, String userEmail);
 }

@@ -52,7 +52,11 @@ export default function CreateIssue() {
         latitude:    location.latitude,
         longitude:   location.longitude,
       })
-      setAiResult(res.data.data)
+      const data = res.data.data
+      setAiResult(data)
+      if (data.suggestedCategory && data.categoryConfidence != null && data.categoryConfidence > 85) {
+        setForm(f => ({ ...f, category: data.suggestedCategory }))
+      }
     } catch {
       setAiResult({
         valid: true,
@@ -324,7 +328,14 @@ export default function CreateIssue() {
                               
                               {!aiResult.isFallback && aiResult.suggestedCategory && aiResult.suggestedCategory !== form.category && (
                                  <div className="p-3 bg-light-surface/50 dark:bg-dark-surface/50 rounded-xl border border-light-border dark:border-dark-border flex items-center justify-between">
-                                    <span className="text-[12px] font-bold text-light-muted dark:text-dark-muted uppercase tracking-widest">Suggested Category</span>
+                                    <div className="flex flex-col gap-0.5">
+                                       <span className="text-[12px] font-bold text-light-muted dark:text-dark-muted uppercase tracking-widest">Suggested Category</span>
+                                       {aiResult.categoryConfidence != null && (
+                                           <span className={`text-[10px] font-bold uppercase tracking-wider ${aiResult.categoryConfidence >= 75 ? 'text-gov-success' : aiResult.categoryConfidence >= 45 ? 'text-brand-saffron' : 'text-red-500'}`}>
+                                               🤖 {aiResult.categoryConfidence}% AI confidence
+                                           </span>
+                                       )}
+                                    </div>
                                     <button onClick={() => setForm(f => ({ ...f, category: aiResult.suggestedCategory }))} className="text-brand-blue font-bold hover:underline cursor-pointer">{aiResult.suggestedCategory}</button>
                                  </div>
                               )}
@@ -348,9 +359,16 @@ export default function CreateIssue() {
                                <div className="bg-light-surface dark:bg-dark-surface border border-brand-saffron/20 rounded-xl p-4 flex items-center justify-between gap-4">
                                   <div className="min-w-0 flex-1">
                                      <p className="text-light-primary dark:text-dark-primary font-black text-[15px] tracking-tight truncate">{aiResult.duplicateIssueTitle || 'Existing Report'}</p>
-                                     <p className="text-[11px] font-bold text-brand-saffron uppercase tracking-widest mt-0.5">
-                                        📍 {aiResult.duplicateDistanceMetres}m away from your location
-                                     </p>
+                                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1">
+                                         <span className="text-[11px] font-bold text-brand-saffron uppercase tracking-widest">
+                                            📍 {aiResult.duplicateDistanceMetres}m away
+                                         </span>
+                                         {aiResult.duplicateSimilarityPercent != null && (
+                                            <span className="text-[11px] font-bold text-purple-600 dark:text-purple-400 uppercase tracking-widest">
+                                               🧠 {aiResult.duplicateSimilarityPercent}% semantic match
+                                            </span>
+                                         )}
+                                     </div>
                                   </div>
                                   <a href={`/issues/${aiResult.duplicateIssueId}`} target="_blank" rel="noreferrer"
                                      className="flex-shrink-0 p-2 rounded-lg border border-light-border dark:border-dark-border text-brand-blue hover:bg-brand-blue/5 transition-all"

@@ -40,4 +40,13 @@ public class AuthController {
         AuthResponse response = authService.login(request);
         return ResponseEntity.ok(ApiResponse.success("Login successful", response));
     }
+
+    /**
+     * GET /api/auth/health
+     * Public endpoint to check if the backend is awake and healthy.
+     */
+    @GetMapping("/health")
+    public ResponseEntity<ApiResponse<String>> health() {
+        return ResponseEntity.ok(ApiResponse.success("Backend is awake and responsive", "OK"));
+    }
 }

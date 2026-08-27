@@ -64,3 +64,36 @@ export const CATEGORY_OPTIONS = [
   'Infrastructure',
   'Other',
 ]
+
+/**
+ * Pings the backend to wake it up on Render Free tier.
+ * Retries on failure/503 until it responds with a valid status.
+ * @param {string} baseUrl - Backend API base URL
+ * @param {function} onProgress - Callback for updating loading message
+ * @param {number} maxAttempts - Maximum retries (default 30)
+ */
+export async function wakeUpBackend(baseUrl, onProgress, maxAttempts = 30) {
+  const url = `${baseUrl || ''}/api/auth/health`;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    if (onProgress) {
+      onProgress(`Connecting to backend... Attempt ${attempt}/${maxAttempts}`);
+    }
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+        mode: 'cors'
+      });
+      // A status of 200, 404, 401, or 403 means the backend is running.
+      // If it is 503, Render is still starting the service.
+      if (response.status !== 503) {
+        return true;
+      }
+    } catch (e) {
+      console.log('Backend wake up ping failed, retrying...', e);
+    }
+    // Wait 3 seconds before next attempt
+    await new Promise(resolve => setTimeout(resolve, 3000));
+  }
+  throw new Error('Server took too long to wake up. Please try again.');
+}
